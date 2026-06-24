@@ -1,17 +1,1793 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fate of the Fellowship</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<title>Fate of the Fellowship</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;color:#d4c4a0;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* ── SETUP SCREEN ── */
+#setup{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;height:100vh;overflow-y:auto;gap:14px;padding:28px 16px 40px;background:linear-gradient(160deg,#0e0c08 0%,#1a1208 100%)}
+#setup::-webkit-scrollbar{width:6px}
+#setup::-webkit-scrollbar-track{background:#0e0c08}
+#setup::-webkit-scrollbar-thumb{background:#4a3820;border-radius:3px}
+#setup h1{font-size:2.4em;color:#c8a050;text-shadow:0 0 20px #c8a05080;letter-spacing:2px}
+#setup h2{font-size:1.1em;color:#907040;margin-top:-8px}
+.setup-card{background:#1a1510;border:1px solid #4a3820;border-radius:8px;padding:20px 28px;width:460px}
+.setup-card h3{color:#c8a050;margin-bottom:12px;font-size:1em;text-transform:uppercase;letter-spacing:1px}
+.setup-row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.setup-row label{width:100px;color:#907040;font-size:.9em}
+.setup-row input,.setup-row select{flex:1;background:#0e0c08;border:1px solid #4a3820;color:#d4c4a0;padding:5px 8px;border-radius:4px;font-family:inherit;font-size:.9em}
+#player-names{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+#player-names input{background:#0e0c08;border:1px solid #4a3820;color:#d4c4a0;padding:5px 8px;border-radius:4px;font-family:inherit}
+.btn{background:#3a2810;border:1px solid #c8a050;color:#c8a050;padding:10px 28px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:1em;transition:all .15s}
+.btn:hover{background:#c8a050;color:#0e0c08}
+.btn-sm{padding:4px 10px;font-size:.8em}
+.btn-danger{border-color:#c04040;color:#c04040}.btn-danger:hover{background:#c04040;color:#fff}
+.btn-green{border-color:#50a850;color:#50a850}.btn-green:hover{background:#50a850;color:#0e0c08}
+
+/* ── GAME LAYOUT ── */
+#game{display:none;flex:1;overflow:hidden;flex-direction:row}
+#map-panel{flex:1;position:relative;overflow:hidden;background:#0a0805}
+#map-wrap{position:relative;width:100%;height:100%}
+#map-img{display:block;width:100%;height:100%;object-fit:contain;object-position:top left}
+#map-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#map-svg.interactive{pointer-events:all}
+
+/* ── SIDEBAR ── */
+#sidebar{width:320px;min-width:280px;display:flex;flex-direction:column;background:#111009;border-left:1px solid #3a2810;overflow:hidden}
+#top-bar{padding:8px 12px;background:#1a1208;border-bottom:1px solid #3a2810;display:flex;flex-direction:column;gap:6px}
+.track-row{display:flex;align-items:center;gap:8px;font-size:.85em}
+.track-label{color:#907040;width:54px}
+.track-bar{flex:1;height:12px;background:#1a1208;border:1px solid #4a3820;border-radius:6px;overflow:hidden}
+.track-fill-hope{height:100%;background:linear-gradient(90deg,#c04040,#f0c040,#50a850);transition:width .3s}
+.track-fill-threat{height:100%;background:#8b2020;transition:width .3s}
+.track-val{color:#d4c4a0;width:32px;text-align:right;font-size:.85em}
+#phase-row{display:flex;justify-content:space-between;align-items:center;margin-top:2px}
+#phase-label{font-size:.8em;color:#907040}
+#player-label{font-size:.85em;color:#c8a050;font-weight:bold}
+#nazgul-row{font-size:.75em;color:#806040;padding:2px 0}
+
+#middle{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+
+/* ── CHARACTERS ── */
+.section-title{font-size:.75em;text-transform:uppercase;letter-spacing:1px;color:#907040;margin-bottom:4px;border-bottom:1px solid #3a2810;padding-bottom:2px}
+.char-card{border:1px solid #3a2810;border-radius:4px;padding:6px 8px;cursor:pointer;transition:all .15s;position:relative}
+.char-card:hover{border-color:#c8a050}
+.char-card.selected{border-color:#f0c040;background:#1e1a10}
+.char-card.inactive{opacity:.4;cursor:default}
+.char-name{font-size:.85em;font-weight:bold}
+.char-loc{font-size:.75em;color:#907040;margin-top:1px}
+.char-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+.char-actions-left{position:absolute;top:6px;right:8px;font-size:.75em;color:#c8a050}
+
+/* ── TOKENS ── */
+.tokens-row{display:flex;gap:6px;flex-wrap:wrap}
+.token-chip{display:inline-flex;align-items:center;gap:3px;background:#1a1510;border:1px solid #4a3820;border-radius:10px;padding:2px 8px;font-size:.8em;cursor:pointer;transition:all .1s}
+.token-chip:hover{border-color:#c8a050}
+.token-chip.zero{opacity:.4}
+
+/* ── HAND ── */
+.hand-cards{display:flex;flex-direction:column;gap:4px}
+.card-item{border:1px solid #3a2810;border-radius:4px;padding:5px 8px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;font-size:.8em}
+.card-item:hover{border-color:#c8a050;background:#1a1510}
+.card-item.selected{border-color:#f0c040;background:#1e1a10}
+.card-item .card-sym{font-size:.9em}
+.card-event{border-color:#5a4020}
+
+/* ── ACTIONS ── */
+.actions-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.action-btn{background:#1a1510;border:1px solid #4a3820;color:#c8a050;padding:6px 4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:.78em;text-align:center;transition:all .15s}
+.action-btn:hover:not(:disabled){background:#2a2010;border-color:#c8a050}
+.action-btn:disabled{opacity:.3;cursor:default}
+.action-btn.active-action{border-color:#f0c040;background:#2a2010}
+#phase-btn{width:100%;padding:8px;margin-top:4px;font-size:.9em}
+
+/* ── LOG ── */
+#log-area{border-top:1px solid #3a2810;padding:6px 10px;height:200px;overflow-y:auto;flex-shrink:0}
+.log-entry{font-size:.75em;color:#907040;padding:1px 0;border-bottom:1px solid #1a1510}
+.log-entry.log-new{color:#c8a050}
+
+/* ── MAP NODES ── */
+.loc-circle{stroke-width:2;cursor:pointer;transition:all .1s}
+.loc-label{font-size:9px;fill:#e8d8b0;pointer-events:none;font-family:Palatino,serif;text-shadow:1px 1px 2px #000}
+.loc-troops{font-size:8px;fill:#ff4040;font-weight:bold;pointer-events:none}
+.loc-friendly{font-size:8px;fill:#40d040;font-weight:bold;pointer-events:none}
+.char-marker{cursor:pointer;transition:all .1s}
+.char-label{font-size:8px;font-family:Palatino,serif;font-weight:bold;pointer-events:none}
+.battle-arrow{stroke-width:2;fill:none;marker-end:url(#arrowhead)}
+.valid-target{animation:pulse .8s infinite alternate}
+@keyframes pulse{from{opacity:.6}to{opacity:1}}
+
+/* ── MODAL ── */
+#modal{display:none;position:fixed;inset:0;background:#0009;z-index:100;align-items:center;justify-content:center}
+#modal.open{display:flex}
+#modal-box{background:#1a1510;border:1px solid #c8a050;border-radius:8px;padding:24px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto}
+#modal-box h2{color:#c8a050;margin-bottom:12px;font-size:1.1em}
+#modal-content{font-size:.9em;line-height:1.6;margin-bottom:16px;color:#d4c4a0}
+#modal-btns{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── TOOLTIP ── */
+#tooltip{position:fixed;background:rgba(14,10,5,0.96);border:1px solid #6a5020;border-radius:6px;padding:9px 13px;font-size:.81em;pointer-events:none;z-index:50;max-width:310px;min-width:190px;display:none;line-height:1.55;box-shadow:0 4px 18px rgba(0,0,0,0.75)}
+#tooltip hr{border:none;border-top:1px solid #3a2810;margin:5px 0}
+#tooltip .tt-title{font-size:1.05em;color:#d4b870;font-weight:bold}
+#tooltip .tt-sub{color:#706050;font-size:.9em}
+#tooltip .tt-conn{padding-left:2px;color:#b8a878}
+#tooltip .tt-bl{font-weight:bold}
+#tooltip .tt-spec{color:#8870c0}
+
+.char-done{opacity:0.5}
+.char-done .char-actions-left{color:#50a850}
+
+/* ── OBJECTIVES ── */
+.obj-card{border:1px solid #3a2810;border-radius:4px;padding:5px 8px;margin-bottom:4px;cursor:pointer;transition:all .15s}
+.obj-card:hover{border-color:#c8a050}
+.obj-card.done{border-color:#2a6030;opacity:.7}
+.obj-card .obj-name{font-size:.8em;font-weight:bold;color:#c8a050;margin-bottom:1px}
+.obj-card.done .obj-name{color:#50a850}
+.obj-card .obj-hint{font-size:.72em;color:#706050}
+
+/* scrollbar */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#0e0c08}
+::-webkit-scrollbar-thumb{background:#3a2810;border-radius:3px}
+</style>
 </head>
 <body>
-    <div id="game-container">
-        <h1>Fate of the Fellowship</h1>
-        <p>Game board and elements will go here.</p>
+
+<!-- ── SETUP SCREEN ─────────────────────────────────────────── -->
+<div id="setup">
+  <h1>Fate of the Fellowship</h1>
+  <h2>The Lord of the Rings · Pandemic System</h2>
+  <div class="setup-card">
+    <h3>Players</h3>
+    <div class="setup-row">
+      <label>Count</label>
+      <select id="num-players" onchange="updatePlayerFields()">
+        <option value="1">1 Player (Solo)</option>
+        <option value="2">2 Players</option>
+        <option value="3">3 Players</option>
+        <option value="4">4 Players</option>
+        <option value="5" selected>5 Players</option>
+        <option value="6">6 Players</option>
+        <option value="7">7 Players</option>
+      </select>
+    </div>
+    <div id="player-names"></div>
+  </div>
+  <div class="setup-card">
+    <h3>Difficulty</h3>
+    <div class="setup-row">
+      <label>Level</label>
+      <select id="difficulty">
+        <option value="introductory">Introductory (4 Skies Darken)</option>
+        <option value="standard" selected>Standard (5 Skies Darken)</option>
+        <option value="heroic">Heroic (5 SD, 5 Objectives)</option>
+        <option value="epic">Epic (6 SD, 5 Objectives)</option>
+        <option value="legendary">Legendary (6 SD, 6 Objectives)</option>
+      </select>
+    </div>
+  </div>
+  <div class="setup-card">
+    <h3>Card Preferences <span style="font-size:.7em;font-weight:normal;color:#706050">(optional)</span></h3>
+    <p style="font-size:.76em;color:#706050;margin:0 0 10px">Prioritised cards are always included first. Avoid cards are only used when there aren't enough others to fill the required count.</p>
+    <details id="prefs-events-details">
+      <summary style="cursor:pointer;color:#c8a050;font-size:.88em;padding:4px 0">Event Cards</summary>
+      <div id="prefs-events" style="margin-top:8px"></div>
+    </details>
+    <details id="prefs-obj-details" style="margin-top:8px">
+      <summary style="cursor:pointer;color:#c8a050;font-size:.88em;padding:4px 0">Objectives</summary>
+      <div id="prefs-obj" style="margin-top:8px"></div>
+    </details>
+  </div>
+  <button class="btn" onclick="startGame()">Begin the Quest</button>
+</div>
+
+<!-- ── GAME SCREEN ─────────────────────────────────────────── -->
+<div id="game">
+  <div id="map-panel">
+    <div id="map-wrap">
+      <img id="map-img" src="map.jpg" alt="Middle-earth map">
+      <svg id="map-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="xMinYMin meet">
+        <defs>
+          <marker id="arrowhead"        markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#c07010"/></marker>
+          <marker id="arrowhead-green"  markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#3a8c3f"/></marker>
+          <marker id="arrowhead-red"    markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#b01010"/></marker>
+          <marker id="arrowhead-blue"   markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#1050a0"/></marker>
+          <marker id="arrowhead-purple" markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#7030a0"/></marker>
+          <marker id="arrowhead-yellow" markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#c8b800"/></marker>
+          <marker id="arrowhead-pink"   markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#d060a0"/></marker>
+          <marker id="arrowhead-grey"   markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#8888aa"/></marker>
+          <marker id="arrowhead-teal"   markerWidth="1.4" markerHeight="1" refX="1.2" refY="0.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,1 L1.4,0.5 z" fill="#208080"/></marker>
+          <filter id="glow"><feGaussianBlur stdDeviation="0.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <g id="connections-layer"></g>
+        <g id="battle-lines-layer"></g>
+        <g id="locations-layer"></g>
+        <g id="chars-layer"></g>
+      </svg>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div id="top-bar">
+      <div class="track-row">
+        <span class="track-label">Hope</span>
+        <div class="track-bar"><div class="track-fill-hope" id="hope-bar" style="width:100%"></div></div>
+        <span class="track-val" id="hope-val">25</span>
+      </div>
+      <div class="track-row">
+        <span class="track-label">Threat</span>
+        <div class="track-bar"><div class="track-fill-threat" id="threat-bar" style="width:20%"></div></div>
+        <span class="track-val" id="threat-val">1/5</span>
+      </div>
+      <div id="phase-row">
+        <span id="phase-label">Phase: Actions</span>
+        <span id="player-label">Player 1</span>
+      </div>
+      <div id="nazgul-row">Nazgûl: loading…</div>
+      <div id="supply-row" style="font-size:.72em;color:#706050;padding:1px 0;display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
 
-    <script src="script.js"></script>
+    <div id="middle">
+      <!-- Characters -->
+      <div>
+        <div class="section-title">Characters</div>
+        <div id="char-list"></div>
+      </div>
+      <!-- Tokens -->
+      <div>
+        <div class="section-title">Symbol Tokens</div>
+        <div class="tokens-row" id="token-row"></div>
+      </div>
+      <!-- Hand -->
+      <div>
+        <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Hand (<span id="hand-count">0</span>/7)</span>
+          <button onclick="showDiscardPileModal()" style="background:none;border:1px solid #4a3820;color:#806040;font-size:.7em;padding:2px 6px;cursor:pointer;border-radius:3px;font-family:inherit">View Discard</button>
+        </div>
+        <div class="hand-cards" id="hand-list"></div>
+      </div>
+      <!-- Objectives -->
+      <div>
+        <div class="section-title">Objectives</div>
+        <div id="obj-list"></div>
+      </div>
+      <!-- Actions -->
+      <div>
+        <div class="section-title">Actions</div>
+        <div id="action-hint" style="font-size:.75em;color:#907040;margin-bottom:4px;min-height:28px"></div>
+        <div class="actions-grid" id="action-grid"></div>
+        <button class="btn" id="phase-btn" onclick="clickPhaseBtn()">End Actions →</button>
+      </div>
+    </div>
+
+    <div id="log-area"><div class="section-title" style="margin-bottom:4px">Game Log</div><div id="log-list"></div></div>
+  </div>
+</div>
+
+<!-- ── MODAL ── -->
+<div id="modal">
+  <div id="modal-box">
+    <h2 id="modal-title"></h2>
+    <div id="modal-content"></div>
+    <div id="modal-btns"></div>
+  </div>
+</div>
+<div id="tooltip"></div>
+
+<script src="data.js"></script>
+<script src="engine.js"></script>
+<script>
+'use strict';
+
+// ── SETUP ─────────────────────────────────────────────────────────────────────
+const DEFAULT_CHAR_ASSIGN = [
+  ['frodo-sam','legolas'], ['merry-pippin','eowyn'],
+  ['arwen','aragorn'], ['gandalf','boromir'], ['gimli','eomer'],
+  ['galadriel','faramir'],  // player 6
+  ['gollum'],               // player 7 — 1 character only
+];
+
+function updatePlayerFields() {
+  const n = parseInt(document.getElementById('num-players').value);
+  const container = document.getElementById('player-names');
+  container.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const defaults = DEFAULT_CHAR_ASSIGN[i] || ['galadriel','faramir'];
+    const [def1, def2] = defaults;
+    const isSingleChar = defaults.length === 1; // only player 7 in a 7-player game
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-bottom:8px';
+
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text'; nameInp.id = `pname${i}`;
+    nameInp.placeholder = `Player ${i+1}`;
+    nameInp.style.cssText = 'background:#0e0c08;border:1px solid #4a3820;color:#d4c4a0;padding:5px 8px;border-radius:4px;font-family:inherit';
+    wrap.appendChild(nameInp);
+
+    const charRow = document.createElement('div');
+    charRow.style.cssText = 'display:flex;gap:4px;align-items:center';
+
+    if (i === 0) {
+      const frodoDiv = document.createElement('div');
+      frodoDiv.style.cssText = 'flex:1;background:#1a1510;border:1px solid #c8a050;color:#f5c500;padding:4px 6px;border-radius:4px;font-size:.8em;display:flex;align-items:center';
+      frodoDiv.textContent = '★ Frodo & Sam (required)';
+      charRow.appendChild(frodoDiv);
+      charRow.appendChild(makeSetupCharSelect(`pchar${i}b`, def2 || 'legolas'));
+    } else if (isSingleChar) {
+      // 7th player: only 1 character, but gets 5 actions
+      charRow.appendChild(makeSetupCharSelect(`pchar${i}a`, def1));
+      const note = document.createElement('span');
+      note.style.cssText = 'color:#806040;font-size:.72em;white-space:nowrap';
+      note.textContent = '1 char · 5 actions';
+      charRow.appendChild(note);
+    } else {
+      charRow.appendChild(makeSetupCharSelect(`pchar${i}a`, def1));
+      charRow.appendChild(makeSetupCharSelect(`pchar${i}b`, def2));
+    }
+    wrap.appendChild(charRow);
+    container.appendChild(wrap);
+  }
+}
+
+function makeSetupCharSelect(id, defaultVal) {
+  const sel = document.createElement('select');
+  sel.id = id;
+  sel.style.cssText = 'flex:1;background:#0e0c08;border:1px solid #4a3820;color:#d4c4a0;padding:4px 6px;border-radius:4px;font-family:inherit;font-size:.8em';
+  for (const [cid, c] of Object.entries(CHARS)) {
+    if (cid === 'frodo-sam') continue;
+    const opt = document.createElement('option');
+    opt.value = cid; opt.textContent = c.name;
+    opt.style.color = c.color;
+    if (cid === defaultVal) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.onchange = onCharSelectChange;
+  // store prev value after browser renders the selection
+  requestAnimationFrame(() => { sel.dataset.prev = sel.value; });
+  return sel;
+}
+
+function onCharSelectChange(evt) {
+  const changed = evt.target;
+  const newVal = changed.value;
+  const oldVal = changed.dataset.prev;
+  if (!oldVal || oldVal === newVal) { changed.dataset.prev = newVal; return; }
+
+  // Swap: if another select already holds newVal, give it our oldVal
+  const n = parseInt(document.getElementById('num-players').value);
+  for (let i = 0; i < n; i++) {
+    for (const s of ['a','b']) {
+      const el = document.getElementById(`pchar${i}${s}`);
+      if (el && el !== changed && el.value === newVal) {
+        el.value = oldVal;
+        el.dataset.prev = oldVal;
+      }
+    }
+  }
+  changed.dataset.prev = newVal;
+}
+updatePlayerFields();
+
+// ── CARD PREFERENCES ──────────────────────────────────────────────────────────
+const PREF_OPTIONS = ['prioritised', 'normal', 'avoid'];
+const PREF_COLORS  = { prioritised:'#45b845', normal:'#c8a050', avoid:'#904040' };
+
+function buildPrefRow(containerId, cards, labelFn) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '';
+  for (const card of cards) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #1e1408;font-size:.78em';
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'flex:1;color:#b09878';
+    lbl.textContent = labelFn(card);
+    row.appendChild(lbl);
+    for (const pref of PREF_OPTIONS) {
+      const label = document.createElement('label');
+      label.style.cssText = `display:flex;align-items:center;gap:3px;cursor:pointer;color:${PREF_COLORS[pref]};white-space:nowrap`;
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = `pref_${card.id}`;
+      radio.value = pref;
+      if (pref === 'normal') radio.checked = true;
+      radio.style.accentColor = PREF_COLORS[pref];
+      label.appendChild(radio);
+      label.appendChild(document.createTextNode(pref.charAt(0).toUpperCase() + pref.slice(1)));
+      row.appendChild(label);
+    }
+    el.appendChild(row);
+  }
+}
+
+function buildCardPrefsUI() {
+  buildPrefRow('prefs-events', EVENT_CARDS, c => c.name);
+  buildPrefRow('prefs-obj', OBJECTIVES.filter(o => !o.required), o => o.name);
+}
+
+function getCardPrefs() {
+  const prefs = {};
+  const inputs = document.querySelectorAll('[name^="pref_"]:checked');
+  for (const inp of inputs) {
+    const id = inp.name.replace('pref_', '');
+    prefs[id] = inp.value;
+  }
+  return prefs;
+}
+
+buildCardPrefsUI();
+
+// Resize SVG to exactly match the displayed image area (accounts for object-fit:contain letterboxing)
+function alignSvgToImage() {
+  const img  = document.getElementById('map-img');
+  const svg  = document.getElementById('map-svg');
+  const wrap = document.getElementById('map-wrap');
+  const wW = wrap.offsetWidth, wH = wrap.offsetHeight;
+  const iW = img.naturalWidth  || 2230;
+  const iH = img.naturalHeight || 2260;
+  const iAspect = iW / iH, wAspect = wW / wH;
+  let dispW, dispH;
+  if (iAspect > wAspect) { dispW = wW; dispH = wW / iAspect; }
+  else                   { dispH = wH; dispW = wH * iAspect; }
+  svg.style.width  = dispW + 'px';
+  svg.style.height = dispH + 'px';
+  svg.style.top    = '0px';
+  svg.style.left   = '0px';
+}
+window.addEventListener('resize', () => { if (G) { alignSvgToImage(); render(); } });
+
+function startGame() {
+  const n = parseInt(document.getElementById('num-players').value);
+  const names = [], charAssignment = [];
+  for (let i = 0; i < n; i++) {
+    names.push(document.getElementById(`pname${i}`)?.value.trim() || `Player ${i+1}`);
+    const chars = i === 0 ? ['frodo-sam'] : [];
+    const selA = document.getElementById(`pchar${i}a`);
+    const selB = document.getElementById(`pchar${i}b`);
+    if (selA?.value) chars.push(selA.value);
+    if (selB?.value) chars.push(selB.value);
+    charAssignment.push(chars);
+  }
+  const diff = document.getElementById('difficulty').value;
+  const cardPrefs = getCardPrefs();
+  newGame({ numPlayers:n, playerNames:names, difficulty:diff, charAssignment, cardPrefs });
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('game').style.display = 'flex';
+  requestAnimationFrame(() => { alignSvgToImage(); render(); });
+}
+
+// ── UI STATE ──────────────────────────────────────────────────────────────────
+let UI = {
+  selectedChar: null,
+  pendingAction: null,  // 'travel'|'fellowship'|'give-card'|'take-card'|'play-event'|...
+  selectedCard: null,
+  validTargets: [],
+  needSearchDecision: false,
+};
+
+function resetUI() {
+  UI.selectedChar = null; UI.pendingAction = null;
+  UI.selectedCard = null; UI.validTargets = [];
+  UI.needSearchDecision = false;
+  document.getElementById('map-svg').classList.remove('interactive');
+}
+
+// ── MAIN RENDER ───────────────────────────────────────────────────────────────
+function render() {
+  if (!G) return;
+  renderTopBar();
+  renderCharList();
+  renderTokens();
+  renderHand();
+  renderObjectives();
+  renderActions();
+  renderLog();
+  renderMap();
+  if (G.phase === 'gameover') showGameover();
+}
+
+function renderTopBar() {
+  const hopeBar = document.getElementById('hope-bar');
+  const hopePct = (G.hope / G.maxHope * 100).toFixed(1);
+  hopeBar.style.width = hopePct + '%';
+  document.getElementById('hope-val').textContent = G.hope;
+  const threatPct = (G.threatRate / G.maxThreat * 100).toFixed(1);
+  document.getElementById('threat-bar').style.width = threatPct + '%';
+  document.getElementById('threat-val').textContent = `${G.threatRate}/${G.maxThreat}`;
+  const phaseNames = { actions:'Actions', 'draw-player':'Draw Cards', 'draw-shadow':'Shadow', gameover:'Game Over' };
+  document.getElementById('phase-label').textContent = `Phase: ${phaseNames[G.phase] || G.phase}`;
+  const p = G.players[G.currentPlayer];
+  document.getElementById('player-label').textContent = p.name;
+  // Nazgûl summary
+  const naz = Object.entries(G.nazgul).filter(([,v])=>v>0).map(([k,v])=>`${REGIONS[k]?.name||k}:${v}`).join(' · ');
+  document.getElementById('nazgul-row').textContent = `Nazgûl: ${naz} | Eye: ${REGIONS[G.eyeRegion]?.name||G.eyeRegion}`;
+  // Supply row
+  const sr = document.getElementById('supply-row');
+  if (sr) {
+    const bits = [
+      ['#cc3030', `Shadow: ${G.shadowSupply}`],
+      ['#4a70d0', `Gondor: ${G.troopSupply.gondor}`],
+      ['#c09040', `Rohan: ${G.troopSupply.rohirrim}`],
+      ['#45b845', `Elven: ${G.troopSupply.elven}`],
+      ['#888888', `Dwarf: ${G.troopSupply.dwarven}`],
+    ];
+    sr.innerHTML = bits.map(([c,t])=>`<span style="color:${c}">${t}</span>`).join('<span style="color:#3a2810"> · </span>');
+  }
+}
+
+function renderCharList() {
+  const p = G.players[G.currentPlayer];
+  const el = document.getElementById('char-list');
+  el.innerHTML = '';
+  for (const cid of p.chars) {
+    const c = CHARS[cid];
+    const cs = G.charState[cid];
+    const left = G.turn.charActions[cid] ?? 4;
+    const done = G.turn.doneChars.includes(cid);
+    const div = document.createElement('div');
+    div.className = 'char-card' + (UI.selectedChar===cid?' selected':'') + (done?' char-done':'');
+    div.innerHTML = `<span class="char-dot" style="background:${c.color}"></span><span class="char-name">${c.name}</span>
+      <span class="char-actions-left">${done ? '✓' : left+'★'}</span>
+      <div class="char-loc">${LOCS[cs.location]?.name||cs.location}</div>`;
+    div.onclick = () => selectChar(cid);
+    el.appendChild(div);
+  }
+}
+
+function renderTokens() {
+  const p = G.players[G.currentPlayer];
+  const el = document.getElementById('token-row');
+  el.innerHTML = '';
+  for (const [k, s] of Object.entries(SYM)) {
+    const n = p.tokens[k] || 0;
+    const chip = document.createElement('span');
+    chip.className = 'token-chip' + (n===0?' zero':'');
+    chip.style.borderColor = s.color;
+    chip.style.color = s.color;
+    chip.innerHTML = `${s.icon} <strong>${n}</strong>`;
+    chip.title = s.name;
+    el.appendChild(chip);
+  }
+}
+
+function renderHand() {
+  const p = G.players[G.currentPlayer];
+  document.getElementById('hand-count').textContent = p.hand.length;
+  const el = document.getElementById('hand-list');
+  el.innerHTML = '';
+  for (const card of p.hand) {
+    const div = document.createElement('div');
+    div.className = 'card-item' + (card.type==='event'?' card-event':'') + (UI.selectedCard===card.id?' selected':'');
+    const sym = card.symbol ? `<span class="card-sym" style="color:${SYM[card.symbol]?.color||'#c8a050'}">${SYM[card.symbol]?.icon||''}</span>` : '<span class="card-sym">✦</span>';
+    div.innerHTML = `${sym} ${card.name}`;
+    div.onclick = () => selectCard(card.id);
+    div.title = card.text || card.name;
+    el.appendChild(div);
+  }
+}
+
+function renderActions() {
+  const el = document.getElementById('action-grid');
+  el.innerHTML = '';
+  const hint = document.getElementById('action-hint');
+  const phaseBtn = document.getElementById('phase-btn');
+
+  if (G.phase === 'gameover') {
+    hint.textContent = G.winner === 'players' ? 'Victory!' : 'Defeat.';
+    phaseBtn.textContent = 'New Game';
+    phaseBtn.onclick = () => location.reload();
+    return;
+  }
+
+  if (G.phase !== 'actions') {
+    const labels = { 'draw-player':'Drawing player cards…', 'draw-shadow':'Resolving shadow cards…' };
+    hint.textContent = labels[G.phase] || '';
+    phaseBtn.style.display = 'none';
+    return;
+  }
+  phaseBtn.style.display = '';
+  phaseBtn.textContent = 'End Turn →';
+  phaseBtn.onclick = clickPhaseBtn;
+
+  const sc = UI.selectedChar;
+  if (!sc) {
+    hint.textContent = UI.pendingAction ? 'Select a target on the map.' : 'Select a character above.';
+    return;
+  }
+
+  const cs = G.charState[sc];
+  const locId = cs.location;
+  const ls = G.locState[locId];
+  const locData = LOCS[locId];
+  const totalF = totalFriendlyAt(locId);
+  const canAct_ = canAct(sc);
+  const isDone = G.turn.doneChars.includes(sc);
+  const actLeft = G.turn.charActions[sc] ?? 0;
+
+  if (UI.pendingAction) {
+    hint.textContent = `Select target for ${UI.pendingAction}. [Esc to cancel]`;
+  } else {
+    hint.textContent = `${CHARS[sc].name} — ${actLeft} action${actLeft!==1?'s':''} left`;
+  }
+
+  const actions = [
+    { key:'travel',     label:'Travel',     tip:'Move to a connected location',                ok: canAct_ },
+    { key:'fellowship', label:'Fellowship', tip:'Give/take a card with a co-located player',   ok: canAct_ },
+    { key:'prepare',    label:'Prepare',    tip:'At a haven: discard a region card for a token', ok: canAct_ && ls.isHaven },
+    { key:'muster',     label:'Muster ♥',  tip:'Spend ♥ to add a friendly troop here',        ok: canAct_ && !!locData.musterType && !ls.isShadowStronghold },
+    { key:'attack',     label:'Attack',     tip:'Roll battle dice against shadow troops here', ok: canAct_ && ls.shadowTroops>0 && totalF>0 },
+    { key:'capture',    label:'Capture ✗',  tip:'Spend ✗ to convert this shadow stronghold',  ok: canAct_ && locData.capturable && ls.shadowTroops===0 && totalF>0 },
+  ];
+  if (sc === 'frodo-sam' && locId === 'mount-doom') {
+    actions.push({ key:'destroy-ring', label:'Destroy Ring!', tip:'Spend 5 symbols to destroy the One Ring', ok: canAct_ });
+  }
+  if (sc === 'faramir') {
+    const p = G.players[G.currentPlayer];
+    const region = LOCS[locId]?.region;
+    const hasResistanceInDiscard = G.playerDiscard.some(c =>
+      c.type === 'region' && c.symbol === 'resistance' && LOCS[c.location]?.region === region
+    );
+    actions.push({
+      key:'wisdom-of-eldar', label:'Wisdom ◎',
+      tip:'Take a resistance card from the discard that matches Faramir\'s region (must be at a haven)',
+      ok: canAct_ && ls.isHaven && hasResistanceInDiscard,
+    });
+  }
+  if (sc === 'eomer') {
+    const t = G.turn;
+    const bonusOk = t.eomerBonusTravelLeft > 0 && !t.eomerBonusForfeited;
+    const bonusTip = t.eomerBonusForfeited ? 'Forfeited — another character acted'
+                   : t.eomerBonusTravelLeft === 0 ? 'Already used this turn'
+                   : 'Rider of Rohan: 1 free travel action';
+    actions.push({ key:'eomer-bonus-travel', label:'⚡ Bonus Travel', tip:bonusTip, ok: bonusOk });
+  }
+  if (sc === 'galadriel') {
+    const p = G.players[G.currentPlayer];
+    const hasStealth = (p.tokens.stealth || 0) >= 1;
+    actions.push({
+      key:'mirror', label:'Mirror of Galadriel',
+      tip:'Look at top 4 player deck cards and reorder them',
+      ok: canAct_ && G.playerDeck.length > 0,
+    });
+    actions.push({
+      key:'lady-of-light', label:'Lady of Light ★',
+      tip:'Spend 1 stealth to draw an unused event card (must be at haven)',
+      ok: hasStealth && ls.isHaven && G.unusedEventCards?.length > 0,
+    });
+  }
+
+  // Objective-specific action buttons
+  const p_act = G.players[G.currentPlayer];
+  const frecasObj = G.objectives?.find(o => o.id === 'frecas-heirs' && !o.done);
+  if (frecasObj && locId === 'dunland' && !(G.extraHavens||[]).includes('dunland')) {
+    const hasV = (p_act.tokens.valor || 0) >= 3, hasF = (p_act.tokens.friendship || 0) >= 3;
+    actions.push({ key:'capture-dunland', label:"⚔ Freca's Heirs",
+      tip:"Spend 3⚔ or 3♥ to make Dunland a haven (Freca's Heirs objective)",
+      ok: canAct_ && (hasV || hasF) });
+  }
+  const theodenObj = G.objectives?.find(o => o.id === 'theodens-mind' && !o.done);
+  if (theodenObj && locId === 'edoras') {
+    const charsAtEdoras = Object.values(G.charState).filter(c => c.location === 'edoras' && c.alive).length;
+    const hasF2 = (p_act.tokens.friendship || 0) >= 2, hasR1 = (p_act.tokens.resistance || 0) >= 1;
+    actions.push({ key:'free-theoden', label:"♥♥◎ Free Théoden",
+      tip:"Spend 2♥+1◎ with ≥2 chars in Edoras (Théoden's Mind objective)",
+      ok: canAct_ && charsAtEdoras >= 2 && hasF2 && hasR1 });
+  }
+
+  for (const a of actions) {
+    const btn = document.createElement('button');
+    btn.className = 'action-btn' + (UI.pendingAction===a.key?' active-action':'');
+    btn.textContent = a.label;
+    btn.disabled = !a.ok;
+    btn.title = a.tip;
+    btn.onclick = () => clickAction(a.key);
+    el.appendChild(btn);
+  }
+
+  // "Done with [char]" button — ends this character's actions, keeps other chars available
+  if (!isDone) {
+    const doneBtn = document.createElement('button');
+    doneBtn.className = 'action-btn btn-danger';
+    doneBtn.style.gridColumn = '1 / -1';
+    doneBtn.textContent = `Done with ${CHARS[sc].name}`;
+    doneBtn.title = 'Finish this character\'s actions; other characters can still act';
+    doneBtn.onclick = () => { endCharActions(sc); UI.selectedChar = null; resetUI(); render(); };
+    el.appendChild(doneBtn);
+  }
+}
+
+function renderObjectives() {
+  const el = document.getElementById('obj-list');
+  if (!el || !G) return;
+  el.innerHTML = '';
+  for (const obj of G.objectives) {
+    const div = document.createElement('div');
+    div.className = 'obj-card' + (obj.done ? ' done' : '');
+    const hint = obj.done ? 'Completed!' : obj.completeIf.slice(0, 55) + (obj.completeIf.length > 55 ? '…' : '');
+    div.innerHTML = `<div class="obj-name">${obj.done ? '✅' : '○'} ${obj.name}</div><div class="obj-hint">${hint}</div>`;
+    div.title = `To complete: ${obj.completeIf}\nReward: ${obj.whenCompleted || ''}`;
+    div.onclick = () => {
+      if (obj.done) { showModal(obj.name, '✅ Already completed!<br>' + (obj.whenCompleted||''), [{label:'Close',action:closeModal}]); return; }
+      const btns = [{ label:'Close', action:closeModal }];
+      if (!obj.done && UI.selectedChar && !obj.required) {
+        btns.unshift({ label:`Complete (${CHARS[UI.selectedChar]?.name})`, action:()=>{ closeModal(); const r=actionCompleteObjective(UI.selectedChar,obj.id); render(); if(r?.error) showModal('Cannot complete',r.error); }});
+      }
+      showModal(obj.name,
+        `<strong>To complete:</strong><br>${obj.completeIf}<br><br><strong>Reward:</strong><br>${obj.whenCompleted||'—'}`+
+        (obj.setup ? `<br><br><em>Setup: ${obj.setup}</em>` : '') +
+        (obj.reservedTroops > 0 ? `<br><span style="color:#50c850">${obj.reservedTroops} ${obj.setupTroopType||'Elven'} troops reserved on this card</span>` : ''), btns);
+    };
+    el.appendChild(div);
+  }
+}
+
+function renderLog() {
+  const el = document.getElementById('log-list');
+  el.innerHTML = '';
+  for (let i = 0; i < Math.min(G.log.length, 40); i++) {
+    const div = document.createElement('div');
+    div.className = 'log-entry' + (i===0?' log-new':'');
+    div.textContent = G.log[i].msg;
+    el.appendChild(div);
+  }
+}
+
+// ── MAP RENDERING ─────────────────────────────────────────────────────────────
+function renderMap() {
+  renderConnections();
+  renderBattleLines();
+  renderLocations();
+  renderCharMarkers();
+}
+
+// Returns sorted canonical key for any segment (so A|B == B|A)
+function segKey(a, b) { return a < b ? a+'|'+b : b+'|'+a; }
+
+// Returns map: canonicalKey → [bl, ...] (all battle lines on that segment)
+function buildBLMultiMap() {
+  const m = {};
+  for (const bl of BATTLE_LINES) {
+    for (let i = 0; i < bl.locs.length - 1; i++) {
+      const k = segKey(bl.locs[i], bl.locs[i+1]);
+      if (!m[k]) m[k] = [];
+      m[k].push(bl);
+    }
+  }
+  return m;
+}
+
+// Returns map: canonicalKey+':'+blId → perpendicular offset value in SVG units
+function buildSegmentOffsets(blMultiMap) {
+  const STEP = 0.85;
+  const offsets = {};
+  for (const [k, bls] of Object.entries(blMultiMap)) {
+    const n = bls.length;
+    bls.forEach((bl, idx) => {
+      offsets[k + ':' + bl.id] = (idx - (n - 1) / 2) * STEP;
+    });
+  }
+  return offsets;
+}
+
+// Apply perpendicular offset to a segment; direction uses canonical ordering for consistency
+function offsetSeg(ax, ay, bx, by, locA, locB, offsetVal) {
+  const dx = bx - ax, dy = by - ay, len = Math.sqrt(dx*dx + dy*dy) || 1;
+  const sign = (locA < locB) ? 1 : -1;
+  const ox = -dy / len * offsetVal * sign;
+  const oy =  dx / len * offsetVal * sign;
+  return { x1: ax+ox, y1: ay+oy, x2: bx+ox, y2: by+oy };
+}
+
+function renderConnections() {
+  const layer = document.getElementById('connections-layer');
+  layer.innerHTML = '';
+  const blMultiMap = buildBLMultiMap();
+  const segOffsets = buildSegmentOffsets(blMultiMap);
+
+  for (const conn of CONNECTIONS) {
+    const a = LOCS[conn.a], b = LOCS[conn.b];
+    if (!a || !b) continue;
+    const k = segKey(conn.a, conn.b);
+    const bls = blMultiMap[k] || [];
+    const isSpecial = conn.type === 'special';
+
+    if (bls.length > 0) {
+      for (const bl of bls) {
+        const off = segOffsets[k + ':' + bl.id] || 0;
+        const s = offsetSeg(a.x, a.y, b.x, b.y, conn.a, conn.b, off);
+        layer.appendChild(svgEl('line', {
+          x1:s.x1, y1:s.y1, x2:s.x2, y2:s.y2,
+          stroke: bl.color, 'stroke-width': 0.45,
+          'stroke-dasharray': isSpecial ? '1,0.8' : '', opacity: 0.85,
+        }));
+      }
+    } else if (isSpecial) {
+      layer.appendChild(svgEl('line', {
+        x1:a.x, y1:a.y, x2:b.x, y2:b.y,
+        stroke: '#c0c0c0', 'stroke-width': 0.7,
+        'stroke-dasharray': '1,0.8', opacity: 0.85,
+      }));
+    } else {
+      layer.appendChild(svgEl('line', {
+        x1:a.x, y1:a.y, x2:b.x, y2:b.y,
+        stroke:'#000000', 'stroke-width':0.7,
+        'stroke-dasharray':'1.5,1.5', 'stroke-dashoffset':'0', opacity:0.9,
+      }));
+      layer.appendChild(svgEl('line', {
+        x1:a.x, y1:a.y, x2:b.x, y2:b.y,
+        stroke:'#ffffff', 'stroke-width':0.7,
+        'stroke-dasharray':'1.5,1.5', 'stroke-dashoffset':'1.5', opacity:0.9,
+      }));
+    }
+  }
+}
+
+const BL_ARROW_IDS = {
+  green:'arrowhead-green', 'green4':'arrowhead-green',
+  orange:'arrowhead', 'orange-b':'arrowhead', 'orange-c':'arrowhead', 'orange-d':'arrowhead', 'orange-e':'arrowhead', 'orange-f':'arrowhead',
+  red:'arrowhead-red',
+  purple:'arrowhead-purple', 'purple-b':'arrowhead-purple', 'purple-c':'arrowhead-purple',
+  yellow:'arrowhead-yellow', 'yellow-b':'arrowhead-yellow', 'yellow-c':'arrowhead-yellow', 'yellow-d':'arrowhead-yellow', 'yellow-e':'arrowhead-yellow',
+  pink:'arrowhead-pink', 'pink-b':'arrowhead-pink', 'pink-c':'arrowhead-pink',
+  grey:'arrowhead-purple',
+  teal:'arrowhead-teal', 'teal-b':'arrowhead-teal', 'teal-c':'arrowhead-teal',
+};
+
+function renderBattleLines() {
+  const layer = document.getElementById('battle-lines-layer');
+  layer.innerHTML = '';
+  const blMultiMap = buildBLMultiMap();
+  const segOffsets = buildSegmentOffsets(blMultiMap);
+
+  for (const bl of BATTLE_LINES) {
+    for (let i = 0; i < bl.locs.length - 1; i++) {
+      const locA = bl.locs[i], locB = bl.locs[i+1];
+      const a = LOCS[locA], b = LOCS[locB];
+      if (!a || !b) continue;
+      const k = segKey(locA, locB);
+      const off = segOffsets[k + ':' + bl.id] || 0;
+      const s = offsetSeg(a.x, a.y, b.x, b.y, locA, locB, off);
+      // Shorten the line slightly at destination to not overlap with the arrowhead circle
+      const dx = s.x2 - s.x1, dy = s.y2 - s.y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
+      const line = svgEl('line', {
+        x1: s.x1, y1: s.y1,
+        x2: s.x2 - dx/len*0.5, y2: s.y2 - dy/len*0.5,
+        stroke: bl.color, 'stroke-width': 0.13, opacity: 0.85,
+        'marker-end': `url(#${BL_ARROW_IDS[bl.id] || 'arrowhead'})`,
+      });
+      layer.appendChild(line);
+    }
+  }
+}
+
+const TYPE_COLORS = {
+  elven:'#3a7a3a', dwarven:'#606060', rohirrim:'#8b5a20',
+  gondor:'#2a4a8a', shadow:'#8b2020', normal:'#5a4a30',
+};
+
+function renderLocations() {
+  const layer = document.getElementById('locations-layer');
+  layer.innerHTML = '';
+
+  for (const [id, loc] of Object.entries(LOCS)) {
+    const ls = G.locState[id];
+    const isValidTarget = UI.validTargets.includes(id);
+    const isCharHere = UI.selectedChar && G.charState[UI.selectedChar]?.location === id;
+    const tf = totalFriendlyAt(id);
+
+    // Determine base style — keep nodes tiny so map labels show through
+    let fill, stroke, r = 0.85;
+    if (ls.isShadowStronghold)           { fill='#701010'; stroke='#cc2020'; r=1.0; }
+    else if (ls.isHaven)                  { fill='#143014'; stroke='#3aaa3a'; r=1.0; }
+    else if (loc.musterType==='elven')    { fill='#123012'; stroke='#3a703a'; }
+    else if (loc.musterType==='dwarven')  { fill='#282828'; stroke='#686868'; }
+    else if (loc.musterType==='rohirrim') { fill='#301808'; stroke='#8a5020'; }
+    else if (loc.musterType==='gondor')   { fill='#0a1838'; stroke='#2a4a8a'; }
+    else if (ls.shadowTroops > 0)         { fill='#3a0808'; stroke='#882020'; }
+    else                                  { fill='rgba(30,25,15,0.5)'; stroke='#4a3a20'; r=0.7; }
+
+    if (isValidTarget) { fill='#c8a050'; stroke='#f0e060'; r=1.15; }
+
+    const g = svgEl('g', { class:'loc-group', 'data-id':id, cursor:'pointer' });
+    g.style.pointerEvents = 'all';  // override SVG's pointer-events:none so hover works
+    g.onclick = () => clickLocation(id);
+    g.onmouseenter = e => showTooltip(e, id);
+    g.onmouseleave = hideTooltip;
+    g.addEventListener('mousemove', moveTooltip);
+
+    if (isValidTarget) {
+      g.appendChild(svgEl('circle',{cx:loc.x,cy:loc.y,r:r+0.7,fill:'none',stroke:'#f0e060','stroke-width':0.5,class:'valid-target'}));
+    }
+    if (isCharHere) {
+      g.appendChild(svgEl('circle',{cx:loc.x,cy:loc.y,r:r+0.5,fill:'none',stroke:'#ffffff','stroke-width':0.45,opacity:0.8}));
+    }
+
+    if (ls.isHaven) {
+      const d = r * 1.35;
+      g.appendChild(svgEl('polygon',{
+        points:`${loc.x},${loc.y-d} ${loc.x+d},${loc.y} ${loc.x},${loc.y+d} ${loc.x-d},${loc.y}`,
+        fill, stroke, 'stroke-width':0.55, opacity:0.88,
+      }));
+    } else {
+      g.appendChild(svgEl('circle',{cx:loc.x,cy:loc.y,r,fill,stroke,'stroke-width':0.45,opacity:0.88}));
+    }
+
+    // Clock-face troop display: shadow clockwise from 1, good counter-clockwise from 11
+    renderTroopClock(g, loc, ls);
+
+    layer.appendChild(g);
+  }
+}
+
+// Clock position: hour 1-12, 12=top, going clockwise
+function clockXY(cx, cy, hour, radius) {
+  const angle = (hour / 12) * Math.PI * 2 - Math.PI / 2;
+  return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
+}
+
+const GOOD_TROOP_ORDER = [
+  { key:'gondor',   color:'#4a70d0' },
+  { key:'rohirrim', color:'#c09040' },
+  { key:'elven',    color:'#45b845' },
+  { key:'dwarven',  color:'#888888' },
+];
+
+function renderTroopClock(g, loc, ls) {
+  const OR = 2.15;  // orbit radius
+  const DR = 0.44;  // dot radius
+  const MAX = 5;    // max per side before overflow indicator
+
+  // Shadow troops: positions 1, 2, 3... (clockwise)
+  const sc = ls.shadowTroops;
+  for (let i = 0; i < Math.min(sc, MAX); i++) {
+    const { x, y } = clockXY(loc.x, loc.y, i + 1, OR);
+    g.appendChild(svgEl('circle', { cx:x, cy:y, r:DR,
+      fill:'#cc2020', stroke:'#550000', 'stroke-width':0.15, opacity:0.92 }));
+  }
+  if (sc > MAX) {
+    const { x, y } = clockXY(loc.x, loc.y, 6, OR);
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    Object.entries({ x, y, fill:'#cc2020', 'font-size':'5.5', 'font-weight':'bold',
+      'text-anchor':'middle', 'dominant-baseline':'middle' }).forEach(([k,v])=>t.setAttribute(k,v));
+    t.textContent = '+' + (sc - MAX);
+    g.appendChild(t);
+  }
+
+  // Good troops: Gondor→Rohirrim→Elven→Dwarven, counter-clockwise from 11
+  const goodList = [];
+  for (const { key, color } of GOOD_TROOP_ORDER) {
+    for (let i = 0; i < (ls.friendly[key] || 0); i++) goodList.push(color);
+  }
+  for (let i = 0; i < Math.min(goodList.length, MAX); i++) {
+    // i=0 → hour 11, i=1 → hour 10, i=2 → hour 9...
+    const hour = ((11 - i - 1 + 12) % 12) + 1; // 11, 10, 9, 8, 7
+    const { x, y } = clockXY(loc.x, loc.y, hour, OR);
+    g.appendChild(svgEl('circle', { cx:x, cy:y, r:DR,
+      fill:goodList[i], stroke:'#001100', 'stroke-width':0.15, opacity:0.92 }));
+  }
+  if (goodList.length > MAX) {
+    const { x, y } = clockXY(loc.x, loc.y, 6, OR * 0.72); // inner ring at 6 to avoid shadow overlap
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    Object.entries({ x, y, fill:'#45b845', 'font-size':'5.5', 'font-weight':'bold',
+      'text-anchor':'middle', 'dominant-baseline':'middle' }).forEach(([k,v])=>t.setAttribute(k,v));
+    t.textContent = '+' + (goodList.length - MAX);
+    g.appendChild(t);
+  }
+}
+
+function renderCharMarkers() {
+  const layer = document.getElementById('chars-layer');
+  layer.innerHTML = '';
+  const p = G.players[G.currentPlayer];
+
+  const byLoc = {};
+  for (const [cid, cs] of Object.entries(G.charState)) {
+    if (!cs.alive) continue;
+    if (!byLoc[cs.location]) byLoc[cs.location] = [];
+    byLoc[cs.location].push(cid);
+  }
+
+  for (const [locId, chars] of Object.entries(byLoc)) {
+    const loc = LOCS[locId];
+    if (!loc) continue;
+    chars.forEach((cid, i) => {
+      const c = CHARS[cid];
+      const isCurrentPlayer = p.chars.includes(cid);
+      const isSelected = UI.selectedChar === cid;
+      const offX = (i - (chars.length-1)/2) * 2.4;
+      const cx = loc.x + offX, cy = loc.y - 3.0;
+
+      const g = svgEl('g', {cursor: isCurrentPlayer ? 'pointer' : 'default'});
+      g.style.pointerEvents = 'all';
+      g.onclick = e => { e.stopPropagation(); if(isCurrentPlayer) selectChar(cid); };
+      g.onmouseenter = e => showCharTooltip(e, cid);
+      g.onmouseleave = hideTooltip;
+      g.addEventListener('mousemove', moveTooltip);
+
+      if (isSelected) {
+        g.appendChild(svgEl('circle',{cx,cy,r:1.9,fill:'none',stroke:'#ffffff','stroke-width':0.5,opacity:0.9}));
+      }
+      g.appendChild(svgEl('circle',{cx,cy,r:1.4,fill:c.color,stroke:'#00000088','stroke-width':0.3,opacity:0.95}));
+      layer.appendChild(g);
+    });
+  }
+
+  renderEyeAndNazgul(layer);
+}
+
+// Where to draw the Eye of Sauron icon per region
+const EYE_CENTERS = {
+  'eriador':          { x:11, y:38 },
+  'rhudaur':          { x:26, y:26 },
+  'enedwaith':        { x:17, y:41 },
+  'misty-mountains':  { x:31, y:34 },
+  'rohan':            { x:31, y:53 },
+  'rhovanion':        { x:73, y:34 },
+  'gondor':           { x:41, y:63 },
+  'mordor':           { x:76, y:70 },
+  'haradwaith':       { x:50, y:82 },
+};
+
+// Where to draw Nazgûl count badges per region
+const NAZ_CENTERS = {
+  'eriador':          { x:16, y:33 },
+  'rhudaur':          { x:36, y:24 },
+  'enedwaith':        { x:17, y:41 },
+  'misty-mountains':  { x:44, y:33 },
+  'rohan':            { x:31, y:53 },
+  'rhovanion':        { x:73, y:34 },
+  'gondor':           { x:41, y:63 },
+  'mordor':           { x:76, y:70 },
+  'haradwaith':       { x:50, y:82 },
+};
+
+function renderEyeAndNazgul(layer) {
+  // Eye of Sauron — fiery eye shape at the active region
+  const ec = EYE_CENTERS[G.eyeRegion];
+  if (ec) {
+    const g = svgEl('g', {});
+    g.style.pointerEvents = 'all';
+    g.style.cursor = 'default';
+    // Outer flame-glow ring
+    g.appendChild(svgEl('ellipse',{cx:ec.x, cy:ec.y, rx:3.0, ry:1.8,
+      fill:'none', stroke:'#ff6600', 'stroke-width':0.6, opacity:0.5}));
+    // Eye white
+    g.appendChild(svgEl('ellipse',{cx:ec.x, cy:ec.y, rx:2.4, ry:1.4,
+      fill:'#c87000', stroke:'#ff8800', 'stroke-width':0.3, opacity:0.9}));
+    // Iris
+    g.appendChild(svgEl('ellipse',{cx:ec.x, cy:ec.y, rx:0.9, ry:1.3,
+      fill:'#ff2200', opacity:0.95}));
+    // Pupil slit
+    g.appendChild(svgEl('ellipse',{cx:ec.x, cy:ec.y, rx:0.3, ry:1.15,
+      fill:'#050000', opacity:1}));
+    // Eyelid lines
+    const lid = `M${ec.x-2.4},${ec.y} Q${ec.x},${ec.y-2} ${ec.x+2.4},${ec.y} Q${ec.x},${ec.y+2} ${ec.x-2.4},${ec.y}`;
+    g.appendChild(svgEl('path',{d:lid, fill:'none', stroke:'#ff8800', 'stroke-width':0.35, opacity:0.7}));
+
+    g.onmouseenter = e => {
+      const nazLines = Object.entries(G.nazgul)
+        .filter(([,v])=>v>0)
+        .map(([k,v])=>`<span style="color:#a09060">${REGIONS[k]?.name||k}:</span> ${v}`)
+        .join('<br>');
+      document.getElementById('tooltip').innerHTML =
+        `<strong style="color:#ff7700">👁 Eye of Sauron</strong><br>` +
+        `<span style="color:#706050">Watching: ${REGIONS[G.eyeRegion]?.name||G.eyeRegion}</span>` +
+        `<hr><strong style="color:#a09060">Nazgûl by region:</strong><br>${nazLines||'none'}`;
+      document.getElementById('tooltip').style.display = 'block';
+      placeTooltip(e);
+    };
+    // If Nazgûl also present in eye's region, show count badge next to eye
+    const eyeNazCount = G.nazgul[G.eyeRegion] || 0;
+    if (eyeNazCount > 0) {
+      const nx = ec.x + 3.5, ny = ec.y - 1.5;
+      g.appendChild(svgEl('circle',{cx:nx,cy:ny,r:1.6,fill:'#1a0a00',stroke:'#604020','stroke-width':0.35,opacity:0.9}));
+      const nt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      nt.setAttribute('x',nx); nt.setAttribute('y',ny);
+      nt.setAttribute('fill','#c09050'); nt.setAttribute('font-size','7');
+      nt.setAttribute('font-weight','bold');
+      nt.setAttribute('text-anchor','middle'); nt.setAttribute('dominant-baseline','middle');
+      nt.textContent = eyeNazCount;
+      g.appendChild(nt);
+    }
+
+    g.onmouseleave = hideTooltip;
+    g.addEventListener('mousemove', moveTooltip);
+    layer.appendChild(g);
+  }
+
+  // Nazgûl count badges — small dark markers per region
+  for (const [regionId, count] of Object.entries(G.nazgul)) {
+    if (!count || regionId === G.eyeRegion) continue; // eye region shows count on the eye
+    const rc = NAZ_CENTERS[regionId];
+    if (!rc) continue;
+    const g = svgEl('g',{});
+    g.appendChild(svgEl('circle',{cx:rc.x, cy:rc.y, r:1.6,
+      fill:'#1a0a00', stroke:'#604020', 'stroke-width':0.35, opacity:0.82}));
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x', rc.x); t.setAttribute('y', rc.y);
+    t.setAttribute('fill','#c09050'); t.setAttribute('font-size','7');
+    t.setAttribute('font-weight','bold');
+    t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','middle');
+    t.textContent = count;
+    g.appendChild(t);
+    layer.appendChild(g);
+  }
+}
+
+function showCharTooltip(e, cid) {
+  const c = CHARS[cid];
+  const cs = G.charState[cid];
+  const loc = LOCS[cs.location];
+  const p = G.players[G.currentPlayer];
+  const isOwned = p.chars.includes(cid);
+  const actLeft = isOwned ? (G.turn.charActions[cid] ?? 4) : null;
+  const done = isOwned && G.turn.doneChars.includes(cid);
+
+  let h = `<strong style="color:${c.color}">${c.name}</strong>`;
+  h += `<br><span style="color:#706050">At: ${loc?.name || cs.location}</span>`;
+  if (isOwned) {
+    h += done
+      ? `<br><span style="color:#50c050">✓ Done this turn</span>`
+      : `<br><span style="color:#c8a050">${actLeft} action${actLeft!==1?'s':''} remaining</span>`;
+  }
+  if (c.ability) h += `<hr><span style="color:#908060;font-size:.85em">${c.ability}</span>`;
+
+  const tt = document.getElementById('tooltip');
+  tt.innerHTML = h;
+  tt.style.display = 'block';
+  placeTooltip(e);
+}
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k,v] of Object.entries(attrs)) {
+    if (v !== undefined && v !== '') el.setAttribute(k, v);
+  }
+  return el;
+}
+
+// ── TOOLTIP ───────────────────────────────────────────────────────────────────
+function showTooltip(e, locId) {
+  const tt = document.getElementById('tooltip');
+  tt.innerHTML = getLocationTooltipHTML(locId);
+  tt.style.display = 'block';
+  placeTooltip(e);
+}
+
+function moveTooltip(e) {
+  if (document.getElementById('tooltip').style.display !== 'none') placeTooltip(e);
+}
+
+function placeTooltip(e) {
+  const tt = document.getElementById('tooltip');
+  const W = window.innerWidth, H = window.innerHeight;
+  const tw = tt.offsetWidth || 300, th = tt.offsetHeight || 200;
+  const x = Math.min(e.clientX + 14, W - tw - 8);
+  const y = Math.min(e.clientY + 14, H - th - 8);
+  tt.style.left = x + 'px';
+  tt.style.top  = y + 'px';
+}
+
+function hideTooltip() { document.getElementById('tooltip').style.display = 'none'; }
+
+function getLocationTooltipHTML(locId) {
+  const loc = LOCS[locId];
+  if (!loc) return locId;
+  const ls = G.locState[locId];
+  const f  = ls.friendly;
+
+  // Title + badges
+  let h = `<span class="tt-title">${loc.name}</span>`;
+  const badges = [];
+  if (ls.isHaven)           badges.push(`<span style="color:#45c045">⬥ Haven</span>`);
+  if (ls.isShadowStronghold) badges.push(`<span style="color:#cc3030">☠ Shadow Stronghold</span>`);
+  if (loc.musterType)        badges.push(`<span style="color:${musterCol(loc.musterType)}">${cap(loc.musterType)} muster</span>`);
+  if (badges.length)         h += '<br>' + badges.join(' · ');
+  const regName = REGIONS[loc.region]?.name || loc.region;
+  if (regName) h += `<br><span class="tt-sub">Region: ${regName}</span>`;
+
+  h += '<hr>';
+
+  // Troops
+  const troopBits = [];
+  if (ls.shadowTroops > 0) troopBits.push(`<span style="color:#ff5050">Shadow: ${ls.shadowTroops}</span>`);
+  if (f.gondor)             troopBits.push(`<span style="color:#6888d0">Gondor: ${f.gondor}</span>`);
+  if (f.rohirrim)           troopBits.push(`<span style="color:#c09040">Rohirrim: ${f.rohirrim}</span>`);
+  if (f.elven)              troopBits.push(`<span style="color:#50c850">Elven: ${f.elven}</span>`);
+  if (f.dwarven)            troopBits.push(`<span style="color:#909090">Dwarven: ${f.dwarven}</span>`);
+  h += troopBits.length ? troopBits.join('  ') : '<span class="tt-sub">No troops</span>';
+
+  // Characters
+  const charNames = Object.entries(G.charState)
+    .filter(([,cs]) => cs.location === locId && cs.alive)
+    .map(([id]) => `<span style="color:${CHARS[id].color}">${CHARS[id].name}</span>`);
+  if (charNames.length) h += '<br>' + charNames.join(', ');
+
+  // Eye of Sauron
+  if (loc.region === G.eyeRegion) h += `<br><span style="color:#c87028">👁 Eye of Sauron watches this region</span>`;
+
+  h += '<hr><span style="color:#a09060;font-size:.9em">Connections:</span><br>';
+
+  // Connections with battle-line info
+  const conns = CONNECTIONS.filter(c => c.a === locId || c.b === locId);
+  if (!conns.length) { h += '<span class="tt-sub">none</span>'; return h; }
+
+  for (const conn of conns) {
+    const otherId = conn.a === locId ? conn.b : conn.a;
+    const otherName = LOCS[otherId]?.name || otherId;
+    let line = `<span class="tt-conn">→ <strong>${otherName}</strong>`;
+
+    if (conn.type === 'special') {
+      const costIcons = conn.cost.map(s => SYM[s]?.icon || s).join('');
+      line += ` <span class="tt-spec">(special path, costs ${costIcons})</span>`;
+    }
+
+    // Battle line membership
+    for (const bl of BATTLE_LINES) {
+      for (let i = 0; i < bl.locs.length - 1; i++) {
+        if (bl.locs[i] === locId && bl.locs[i+1] === otherId) {
+          line += ` <span class="tt-bl" style="color:${bl.color}">■ ${bl.name} →</span>`;
+        } else if (bl.locs[i] === otherId && bl.locs[i+1] === locId) {
+          line += ` <span class="tt-bl" style="color:${bl.color}">■ ${bl.name} ←</span>`;
+        }
+      }
+    }
+    line += '</span>';
+    h += line + '<br>';
+  }
+  return h;
+}
+
+function musterCol(t) {
+  return { elven:'#45c045', dwarven:'#909090', rohirrim:'#c09040', gondor:'#6888d0' }[t] || '#c8a050';
+}
+function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
+
+// ── INTERACTION ───────────────────────────────────────────────────────────────
+function selectChar(cid) {
+  if (UI.pendingAction) { resetUI(); render(); return; }
+  UI.selectedChar = cid === UI.selectedChar ? null : cid;
+  UI.validTargets = [];
+  render();
+}
+
+function selectCard(cardId) {
+  UI.selectedCard = cardId === UI.selectedCard ? null : cardId;
+  // If event card selected + no action pending, prompt
+  const p = G.players[G.currentPlayer];
+  const card = p.hand.find(c=>c.id===cardId);
+  if (card && card.type==='event' && UI.selectedCard===cardId) {
+    handleEventCard(card);
+  } else if (card && card.type==='region' && UI.pendingAction==='prepare') {
+    const res = actionPrepare(UI.selectedChar, cardId);
+    resetUI(); render();
+  }
+}
+
+function clickAction(action) {
+  const sc = UI.selectedChar;
+  if (!sc) return;
+
+  if (action === 'travel') {
+    UI.pendingAction = 'travel';
+    UI.validTargets = validTravelTargets(sc);
+    document.getElementById('map-svg').classList.add('interactive');
+  } else if (action === 'fellowship') {
+    showFellowshipModal();
+  } else if (action === 'prepare') {
+    UI.pendingAction = 'prepare';
+    document.getElementById('action-hint').textContent = 'Select a region card from your hand to discard.';
+  } else if (action === 'muster') {
+    const res = actionMuster(sc);
+    resetUI(); render();
+    if (res?.error) showModal('Cannot Muster', res.error);
+  } else if (action === 'attack') {
+    const res = actionAttack(sc);
+    resetUI(); render();
+    if (res?.rolls) showDiceResult('Battle Roll', res.rolls, 'battle');
+  } else if (action === 'capture') {
+    const res = actionCapture(sc);
+    resetUI(); render();
+    if (res?.error) showModal('Cannot Capture', res.error);
+  } else if (action === 'destroy-ring') {
+    if (confirm('Attempt to Destroy the One Ring? You need 5 symbol tokens.')) {
+      const res = actionDestroyRing();
+      render();
+      if (res?.ok) {
+        const msg = res.hopeRemains > 0 ? '🎉 THE RING IS DESTROYED!' : '💀 The Ring was not destroyed. All hope is lost.';
+        showModal('Ring Destruction', `${msg}<br>Rolls: ${res.rolls.join(', ')}<br>Hope remaining: ${res.hopeRemains}`);
+      } else if (res?.error) showModal('Cannot Destroy Ring', res.error);
+    }
+  } else if (action === 'wisdom-of-eldar') {
+    const res = actionWisdomOfEldar(sc);
+    render();
+    if (res?.ok) showPickFromDiscardModal(res.matches, 'Wisdom of the Eldar — choose a ◎ card');
+    else if (res?.error) showModal('Wisdom of the Eldar', res.error);
+  } else if (action === 'eomer-bonus-travel') {
+    UI.pendingAction = 'eomer-bonus-travel';
+    UI.validTargets = validTravelTargets('eomer');
+    document.getElementById('map-svg').classList.add('interactive');
+  } else if (action === 'mirror') {
+    const res = actionMirrorOfGaladriel(sc);
+    render();
+    if (res?.ok) showMirrorModal(res.revealed);
+    else if (res?.error) showModal('Mirror of Galadriel', res.error);
+  } else if (action === 'lady-of-light') {
+    const res = actionLadyOfLight(sc);
+    render();
+    if (res?.ok) showModal('Lady of Light', `Drew: <b>${res.card.name}</b><br><em>${res.card.text}</em>`);
+    else if (res?.error) showModal('Lady of Light', res.error);
+  } else if (action === 'capture-dunland') {
+    const p = G.players[G.currentPlayer];
+    const hasV = (p.tokens.valor || 0) >= 3, hasF = (p.tokens.friendship || 0) >= 3;
+    const doCapture = (pay) => { const r = actionCaptureDunland(sc, pay); resetUI(); render(); if (r?.error) showModal("Freca's Heirs", r.error); };
+    if (hasV && hasF) {
+      showModal("Freca's Heirs", 'Pay to capture Dunland as a haven:', [
+        { label:'3⚔ Valor',      action:()=>{ closeModal(); doCapture('valor'); } },
+        { label:'3♥ Friendship', action:()=>{ closeModal(); doCapture('friendship'); } },
+      ]);
+    } else { doCapture(hasV ? 'valor' : 'friendship'); }
+  } else if (action === 'free-theoden') {
+    const res = actionCompleteObjective(sc, 'theodens-mind');
+    resetUI(); render();
+    if (res?.error) showModal("Théoden's Mind", res.error);
+    else if (res?.ok) showTheodenRewardModal(res.addRohirrimMax);
+  }
+  render();
+  // Check if Boromir's Honor was triggered during battle
+  if (G?.ui?.boromirHonorPending) {
+    const loc = G.ui.boromirHonorPending;
+    G.ui.boromirHonorPending = null;
+    setTimeout(() => showBoromirHonorModal(loc), 250);
+  }
+  // Check if Boromir's replacement is ready
+  if (G?.ui?.boromirReplacementReady) {
+    const info = G.ui.boromirReplacementReady;
+    setTimeout(() => showBoromirReplacementModal(info.candidates, info.playerIdx), 250);
+  }
+}
+
+function showMirrorModal(revealed) {
+  // revealed: array of cards in draw order (index 0 = next drawn)
+  let order = [...revealed];
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a1208;border:2px solid #6a4820;border-radius:8px;padding:20px;max-width:380px;width:90%;color:#d4c4a0;font-family:inherit';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:1.1em;color:#c8a050;margin-bottom:10px';
+  title.textContent = 'Mirror of Galadriel — Reorder deck top';
+  box.appendChild(title);
+
+  const note = document.createElement('div');
+  note.style.cssText = 'font-size:.75em;color:#706050;margin-bottom:10px';
+  note.textContent = 'First card = next drawn. Use arrows to reorder.';
+  box.appendChild(note);
+
+  const list = document.createElement('div');
+  list.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+
+  function rebuildList() {
+    list.innerHTML = '';
+    order.forEach((card, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;background:#0e0c08;border:1px solid #3a2810;border-radius:4px;padding:6px 8px';
+      const label = document.createElement('span');
+      label.style.cssText = 'flex:1;font-size:.82em';
+      label.textContent = `${i+1}. ${card.name}`;
+      const upBtn = document.createElement('button');
+      upBtn.textContent = '↑'; upBtn.style.cssText = 'background:none;border:1px solid #6a4820;color:#c8a050;cursor:pointer;padding:2px 5px;border-radius:3px';
+      upBtn.disabled = i === 0;
+      upBtn.onclick = () => { [order[i-1], order[i]] = [order[i], order[i-1]]; rebuildList(); };
+      const dnBtn = document.createElement('button');
+      dnBtn.textContent = '↓'; dnBtn.style.cssText = 'background:none;border:1px solid #6a4820;color:#c8a050;cursor:pointer;padding:2px 5px;border-radius:3px';
+      dnBtn.disabled = i === order.length - 1;
+      dnBtn.onclick = () => { [order[i], order[i+1]] = [order[i+1], order[i]]; rebuildList(); };
+      row.appendChild(label); row.appendChild(upBtn); row.appendChild(dnBtn);
+      list.appendChild(row);
+    });
+  }
+  rebuildList();
+  box.appendChild(list);
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.textContent = 'Confirm Order';
+  confirmBtn.style.cssText = 'margin-top:14px;width:100%;padding:8px;background:#2a2010;border:1px solid #c8a050;color:#c8a050;cursor:pointer;border-radius:4px;font-family:inherit';
+  confirmBtn.onclick = () => {
+    confirmMirrorOrder(order.map(c => c.id));
+    overlay.remove();
+    render();
+  };
+  box.appendChild(confirmBtn);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showAmbushOfferModal() {
+  showModal('Faramir — Ambush!',
+    'Faramir arrived at a location with shadow troops. Launch a bonus attack?',
+    [
+      { label:'Attack!', action:() => {
+        closeModal();
+        const res = startFaramirAmbush();
+        if (res?.ok && res.rolls) showAmbushResolveModal(res.rolls);
+        else render();
+      }},
+      { label:'Skip', action:() => { G.ui.faramirAmbushPending = null; closeModal(); render(); }},
+    ]
+  );
+}
+
+function showAmbushResolveModal(rolls) {
+  const p = G.players[G.currentPlayer];
+  const maxSpend = Math.min(p.tokens.stealth || 0, rolls.filter(r => r !== 'rout').length);
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a1208;border:2px solid #6a4820;border-radius:8px;padding:20px;max-width:360px;width:90%;color:#d4c4a0;font-family:inherit';
+  box.innerHTML = `<div style="font-size:1.1em;color:#c8a050;margin-bottom:8px">Faramir Ambush</div>
+    <div style="margin-bottom:8px">Rolled: <b>${rolls.join(', ')}</b></div>
+    <div style="font-size:.82em;color:#908070;margin-bottom:12px">Spend ★ to convert dice to Rout (you have ${p.tokens.stealth || 0} ★, up to ${maxSpend} conversions available)</div>`;
+  const btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+  for (let spend = 0; spend <= maxSpend; spend++) {
+    const b = document.createElement('button');
+    b.style.cssText = 'padding:7px;background:#0e0c08;border:1px solid #4a3820;color:#c8a050;cursor:pointer;border-radius:4px;font-family:inherit';
+    b.textContent = spend === 0 ? 'Apply as rolled (0 ★)' : `Spend ${spend} ★ → convert ${spend} die/dice to Rout`;
+    b.onclick = () => {
+      overlay.remove();
+      const res = confirmFaramirAmbush(spend);
+      render();
+      if (res?.ok) showDiceResult('Ambush Result', res.rolls, 'battle');
+    };
+    btns.appendChild(b);
+  }
+  box.appendChild(btns);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showPickFromDiscardModal(cards, title) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a1208;border:2px solid #6a4820;border-radius:8px;padding:20px;max-width:380px;width:90%;color:#d4c4a0;font-family:inherit';
+  box.innerHTML = `<div style="font-size:1.05em;color:#c8a050;margin-bottom:10px">${title}</div>`;
+  const list = document.createElement('div');
+  list.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+  for (const card of cards) {
+    const b = document.createElement('button');
+    b.style.cssText = 'padding:7px 10px;background:#0e0c08;border:1px solid #4a3820;color:#d4c4a0;cursor:pointer;border-radius:4px;font-family:inherit;text-align:left';
+    b.textContent = `${card.name} (${SYM[card.symbol]?.icon || card.symbol})`;
+    b.onclick = () => { overlay.remove(); const res = takeDiscardCard(card.id); render(); if (res?.error) showModal('Error', res.error); };
+    list.appendChild(b);
+  }
+  box.appendChild(list);
+  const cancel = document.createElement('button');
+  cancel.textContent = 'Cancel';
+  cancel.style.cssText = 'margin-top:10px;width:100%;padding:6px;background:none;border:1px solid #4a3820;color:#806040;cursor:pointer;border-radius:4px;font-family:inherit';
+  cancel.onclick = () => overlay.remove();
+  box.appendChild(cancel);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showDiscardPileModal() {
+  const discard = G.playerDiscard;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a1208;border:2px solid #4a3820;border-radius:8px;padding:16px;max-width:380px;width:90%;max-height:80vh;overflow-y:auto;color:#d4c4a0;font-family:inherit';
+  box.innerHTML = `<div style="font-size:1.05em;color:#c8a050;margin-bottom:10px">Player Discard Pile (${discard.length} cards)</div>`;
+  if (discard.length === 0) {
+    box.innerHTML += '<div style="color:#605040;font-size:.85em">Empty</div>';
+  } else {
+    for (const card of [...discard].reverse()) {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:4px 6px;border-bottom:1px solid #2a1f10;font-size:.8em';
+      const sym = card.symbol ? (SYM[card.symbol]?.icon || '') : '';
+      row.textContent = `${card.name}${sym ? ' ' + sym : ''}`;
+      box.appendChild(row);
+    }
+  }
+  const close = document.createElement('button');
+  close.textContent = 'Close';
+  close.style.cssText = 'margin-top:12px;width:100%;padding:7px;background:none;border:1px solid #4a3820;color:#806040;cursor:pointer;border-radius:4px;font-family:inherit';
+  close.onclick = () => overlay.remove();
+  box.appendChild(close);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showTheodenRewardModal(maxN) {
+  const opts = [];
+  for (let n = maxN; n >= 0; n--) {
+    const count = n;
+    opts.push({
+      label: count === 0 ? 'No troops' : `+${count} Rohirrim to Edoras`,
+      action: () => {
+        if (count > 0 && G.troopSupply.rohirrim >= count) {
+          G.locState['edoras'].friendly.rohirrim = (G.locState['edoras'].friendly.rohirrim || 0) + count;
+          G.troopSupply.rohirrim -= count;
+          addLog(`+${count} Rohirrim added to Edoras.`);
+        }
+        closeModal(); render();
+      },
+    });
+  }
+  showModal("Théoden's Mind", 'The King is free! Add Rohirrim troops to Edoras:', opts);
+}
+
+function showBoromirHonorModal(locId) {
+  const shadowHere = G.locState[locId]?.shadowTroops || 0;
+  const opts = [];
+  for (let n = Math.min(2, shadowHere); n >= 0; n--) {
+    const count = n;
+    opts.push({
+      label: count === 0 ? 'Remove none' : `Remove ${count} shadow troop${count>1?'s':''}`,
+      action: () => { closeModal(); completeBoromirHonor(locId, count); render(); },
+    });
+  }
+  showModal("Boromir's Honor", `The last friendly troop was removed! Boromir dies with honor.<br>Remove shadow troops from ${LOCS[locId]?.name}?`, opts);
+}
+
+function showBoromirReplacementModal(candidates, playerIdx) {
+  const playerName = G.players[playerIdx]?.name || `Player ${playerIdx+1}`;
+  const pick = (cid) => {
+    actionReplaceBoromir(cid);
+    closeModal(); render();
+  };
+  // Random pick button + manual picks
+  const btns = [
+    { label:'Random', action:() => { const r = candidates[Math.floor(Math.random()*candidates.length)]; pick(r); } },
+    ...candidates.map(cid => ({ label: CHARS[cid].name, action: () => pick(cid) })),
+  ];
+  showModal("Boromir's Replacement",
+    `A new hero joins ${playerName}'s cause! Draw a character from the box:`, btns);
+}
+
+function clickLocation(locId) {
+  if (!UI.pendingAction) return;
+
+  if (UI.pendingAction === 'travel') {
+    if (!UI.validTargets.includes(locId)) return;
+    const res = actionTravel(UI.selectedChar, locId);
+    if (res?.needsSearchDecision) {
+      // Ask about stealth spend
+      const p = G.players[G.currentPlayer];
+      const hasS = (p.tokens.stealth||0) > 0;
+      showModal('Search Roll',
+        `Frodo travels to ${LOCS[locId].name}.<br>${hasS ? 'Spend 1 ★ to avoid the search roll?' : 'No ★ available — rolling search.'}`,
+        hasS ? [
+          { label:`Spend ★ (${p.tokens.stealth} left)`, action:()=>{ performSearch(true); resetUI(); render(); } },
+          { label:'Roll Search', action:()=>{ const r=performSearch(false); resetUI(); render(); if(r.rolls.length) showDiceResult('Search Roll',r.rolls,'search'); } },
+        ] : [
+          { label:'Roll Search', action:()=>{ const r=performSearch(false); resetUI(); render(); if(r.rolls.length) showDiceResult('Search Roll',r.rolls,'search'); } },
+        ]
+      );
+    } else {
+      resetUI();
+      if (res?.ambushPending) showAmbushOfferModal();
+    }
+    render();
+  } else if (UI.pendingAction === 'eomer-bonus-travel') {
+    if (!UI.validTargets.includes(locId)) return;
+    const res = actionEomerBonusTravel(locId);
+    resetUI(); render();
+    if (res?.error) showModal('Bonus Travel', res.error);
+  }
+}
+
+function clickPhaseBtn() {
+  if (G.phase === 'actions') {
+    G.phase = 'draw-player';
+    const res = drawPlayerCards();
+    render();
+    if (res?.drawn?.some(c=>c.type==='skies-darken')) {
+      showModal('Skies Darken!', `Skies Darken card(s) drawn! Check log for effects.`, [{label:'Continue',action:()=>{ closeModal(); render(); }}]);
+    }
+  }
+}
+
+// Auto-draw shadow cards when in draw-shadow phase
+setInterval(() => {
+  if (G && G.phase === 'draw-shadow') {
+    const res = drawShadowCards();
+    render();
+  }
+}, 100);
+
+// ── FELLOWSHIP MODAL ──────────────────────────────────────────────────────────
+function showFellowshipModal() {
+  const sc = UI.selectedChar;
+  const cs = G.charState[sc];
+  const p = G.players[G.currentPlayer];
+  const otherPlayers = G.players.filter((pp,i)=>i!==G.currentPlayer);
+  const coLocated = otherPlayers.filter(pp => pp.chars.some(c=>G.charState[c].location===cs.location));
+
+  if (coLocated.length === 0) { showModal('Fellowship','No other player\'s character is in your location.'); return; }
+
+  let html = '<p>Choose an action:</p>';
+  const btns = [];
+
+  // Give card options
+  for (const card of p.hand.filter(c=>c.type==='region')) {
+    for (const tp of coLocated) {
+      const tIdx = G.players.indexOf(tp);
+      btns.push({ label:`Give "${card.name}" → ${tp.name}`, action:()=>{ actionFellowship(sc,tIdx,card.id,true); closeModal(); resetUI(); render(); } });
+    }
+  }
+  // Take card options (limited to visible)
+  for (const tp of coLocated) {
+    const tIdx = G.players.indexOf(tp);
+    for (const card of tp.hand.filter(c=>c.type==='region')) {
+      btns.push({ label:`Take "${card.name}" from ${tp.name}`, action:()=>{ actionFellowship(sc,tIdx,card.id,false); closeModal(); resetUI(); render(); } });
+    }
+  }
+
+  showModal('Fellowship', btns.length ? 'Cards you can exchange:' : 'No region cards to exchange.', btns.slice(0,8));
+}
+
+// ── EVENT CARD HANDLING ───────────────────────────────────────────────────────
+function handleEventCard(card) {
+  const btns = [];
+  switch (card.effect) {
+    case 'eagle': {
+      const activePChars = G.players.flatMap(p => p.chars).filter(cid => G.charState[cid]?.alive);
+      showModal(card.name, card.text + '<br><br>Select character:',
+        activePChars.map(cid => ({
+          label: CHARS[cid].name,
+          action: () => {
+            closeModal();
+            showFullLocPicker('Select destination', locId => {
+              const opts = { charId:cid, locId };
+              playEvent(card.id, opts);
+              resetUI(); render();
+              if (opts._eagleSearchRolls?.length) showDiceResult('Search Roll (Eagles)', opts._eagleSearchRolls, 'search');
+            });
+          }
+        }))
+      );
+      break;
+    }
+    case 'paths-of-dead':
+      showModal(card.name, card.text + '<br><br>Select character:', Object.entries(CHARS).map(([cid,c])=>({
+        label: c.name, action:()=>{
+          playEvent(card.id, { charId:cid, locId:'minas-tirith' });
+          closeModal(); resetUI(); render();
+        }
+      })));
+      break;
+    case 'ent-moot':
+      showLocPicker(card.id, null, loc=>LOCS[loc].region==='rohan');
+      break;
+    case 'sting': {
+      const frodoLoc = frodoLocation();
+      playEvent(card.id, { locId:frodoLoc });
+      resetUI(); render();
+      break;
+    }
+    case 'recall-nazgul':
+      showModal(card.name, card.text + '<br><br>Choose region:', Object.entries(G.nazgul).filter(([,v])=>v>0).map(([r,v])=>({
+        label:`${REGIONS[r]?.name||r} (${v} Nazgûl)`, action:()=>{ playEvent(card.id,{region:r}); closeModal(); resetUI(); render(); }
+      })));
+      break;
+    case 'lembas': {
+      const p = G.players[G.currentPlayer];
+      const pending = p.chars.filter(cid => !G.turn.doneChars.includes(cid));
+      if (pending.length === 0) {
+        showModal('Lembas', 'Both characters have already finished their actions this turn.', []);
+      } else if (pending.length === 1) {
+        playEvent(card.id, { charId: pending[0] });
+        resetUI(); render();
+      } else {
+        showModal(card.name, card.text + '<br><br>Give the 2 extra actions to:',
+          pending.map(cid => ({
+            label: CHARS[cid].name,
+            action: () => { playEvent(card.id, { charId: cid }); closeModal(); resetUI(); render(); },
+          }))
+        );
+      }
+      break;
+    }
+    default:
+      playEvent(card.id, {});
+      resetUI(); render();
+  }
+  UI.selectedCard = null;
+}
+
+function showLocPicker(cardId, charId, filter) {
+  const locs = Object.keys(LOCS).filter(filter||(() => true));
+  showModal('Select Location', 'Choose a location:', locs.map(lid=>({
+    label: LOCS[lid].name,
+    action:()=>{ playEvent(cardId, { charId, locId:lid }); closeModal(); resetUI(); render(); }
+  })).slice(0,12));
+}
+
+function showFullLocPicker(title, callback, filter) {
+  const locs = Object.keys(LOCS).filter(filter || (() => true));
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a1208;border:2px solid #4a3820;border-radius:8px;padding:16px;max-width:360px;width:90%;max-height:80vh;display:flex;flex-direction:column;font-family:inherit';
+  box.innerHTML = `<div style="font-size:1em;color:#c8a050;margin-bottom:10px">${title}</div>`;
+  const scroll = document.createElement('div');
+  scroll.style.cssText = 'overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:4px';
+  for (const lid of locs) {
+    const b = document.createElement('button');
+    b.style.cssText = 'padding:6px 10px;background:#0e0c08;border:1px solid #3a2810;color:#c8a050;cursor:pointer;border-radius:3px;font-family:inherit;text-align:left;font-size:.82em';
+    b.textContent = LOCS[lid].name;
+    b.onclick = () => { overlay.remove(); callback(lid); };
+    scroll.appendChild(b);
+  }
+  box.appendChild(scroll);
+  const cancel = document.createElement('button');
+  cancel.textContent = 'Cancel';
+  cancel.style.cssText = 'margin-top:10px;padding:6px;background:none;border:1px solid #4a3820;color:#806040;cursor:pointer;border-radius:4px;font-family:inherit';
+  cancel.onclick = () => overlay.remove();
+  box.appendChild(cancel);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+// ── MODAL HELPERS ─────────────────────────────────────────────────────────────
+function showModal(title, content, btns) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-content').innerHTML = content;
+  const bEl = document.getElementById('modal-btns');
+  bEl.innerHTML = '';
+  if (btns) {
+    for (const b of btns) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = b.label;
+      btn.onclick = b.action;
+      bEl.appendChild(btn);
+    }
+  }
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn btn-sm';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = closeModal;
+  bEl.appendChild(closeBtn);
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+const DICE_FACE_LABELS = {
+  slip:'Slip By (no effect)', weary:'Weary (-1 hope)', exposed:'Exposed (-1 hope if not haven)',
+  recall:'Recall (Nazgûl to Mordor)', fate:'Fate (spend ♦ to reroll)',
+  rout:'Rout (remove shadow troop)', exchange:'Exchange (remove 1 shadow + 1 friendly)',
+  overrun:'Overrun (remove 1 friendly)', nazgul:'Nazgûl! (-2 friendly if Nazgûl present)',
+  hope:'Hope remains', shadow:'Hope lost',
+};
+
+function showDiceResult(title, rolls, type) {
+  const html = rolls.map(r=>`<div style="margin:2px 0">🎲 <strong>${r}</strong> — ${DICE_FACE_LABELS[r]||r}</div>`).join('');
+  showModal(title, html || 'No dice rolled.');
+}
+
+function showGameover() {
+  const won = G.winner === 'players';
+  showModal(
+    won ? '🎉 Victory!' : '💀 Defeat',
+    won ? 'The One Ring has been destroyed! The Fellowship triumphs over the shadow!' :
+          'All hope is lost. Sauron\'s shadow covers Middle-earth.',
+    [{ label:'Play Again', action:()=>location.reload() }]
+  );
+}
+
+// ── KEYBOARD ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); resetUI(); if(G) render(); }
+});
+</script>
 </body>
 </html>
