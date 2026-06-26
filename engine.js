@@ -5,8 +5,11 @@ let G = null; // the live game state
 
 function newGame(cfg) {
   const { numPlayers, playerNames, difficulty } = cfg;
+  const plusMatch = difficulty.match(/^legendary\+(\d+)$/);
+  const plusLevel = plusMatch ? parseInt(plusMatch[1]) : 0;
+  const baseDiff = plusLevel > 0 ? 'legendary' : difficulty;
   const skiesCounts = { introductory:4, standard:5, heroic:5, epic:6, legendary:6 };
-  const numSkies = skiesCounts[difficulty] || 5;
+  const numSkies = skiesCounts[baseDiff] || 5;
 
   // Build location state
   const locState = {};
@@ -104,7 +107,7 @@ function newGame(cfg) {
   // Pre-compute objectives (must happen before G to inform troopSupply)
   const allCharIds = players.flatMap(p => p.chars);
   const objCounts = { introductory:3, standard:3, heroic:4, epic:4, legendary:5 };
-  const numOpt = objCounts[difficulty] ?? 3;
+  const numOpt = Math.min((objCounts[baseDiff] ?? 3) + plusLevel, OBJECTIVES.filter(o => !o.required).length);
   const requiredObjs = OBJECTIVES.filter(o => o.required);
   const eligibleOptional = OBJECTIVES.filter(o => !o.required && (!o.requiresChar || allCharIds.includes(o.requiresChar)));
   const computedObjectives = [
@@ -119,10 +122,11 @@ function newGame(cfg) {
     }
   }
 
-  // Shadow deck — draw 9 for setup (troop placement only, no other effects)
+  // Shadow deck — draw 9 + extra for odd legendary+ levels (troop placement only)
   let shadowDeck = makeShadowDeck();
   const shadowSetupDiscard = [];
-  for (let i = 0; i < 9; i++) {
+  const extraSetupDraws = Math.ceil(plusLevel / 2); // +1 per odd + level
+  for (let i = 0; i < 9 + extraSetupDraws; i++) {
     if (shadowDeck.length) {
       const card = shadowDeck.pop();
       const spawnId = card.spawnLoc || card.location;
@@ -168,7 +172,47 @@ function newGame(cfg) {
     unusedEventCards,
     skiesBuffer: [], // Skies Darken cards waiting to resolve between draws
     difficulty,
+    plusLevel,
+    nazgulDeaths: 0,           // total Nazgûl kills by Éowyn (for Shieldmaiden objective)
+    gandalfState: 'grey',      // 'grey' | 'dead' | 'awaiting-white' | 'white'
+    shadowLieutenants: [],     // active lieutenant ids from legendary+
   };
+  // Spawn shadow lieutenants (1 per even + level, up to 5 defined)
+  const numLieutenants = Math.min(Math.floor(plusLevel / 2), SHADOW_LIEUTENANTS.length);
+  for (let i = 0; i < numLieutenants; i++) {
+    const lt = SHADOW_LIEUTENANTS[i];
+    G.shadowLieutenants.push(lt.id);
+    if (lt.spawnLoc && G.locState[lt.spawnLoc]) {
+      G.locState[lt.spawnLoc].shadowTroops++;
+      addLog(`Lieutenant: ${lt.name} spawns at ${LOCS[lt.spawnLoc]?.name || lt.spawnLoc}.`);
+    }
+    if (lt.id === 'witch-king') {
+      // Secretly mark one Nazgûl region as the Witch-king's
+      const regions = Object.keys(G.nazgul).filter(r => (G.nazgul[r] || 0) > 0);
+      G.witchKingRegion = regions[Math.floor(Math.random() * regions.length)];
+      G.witchKingRevealed = false;
+      addLog('Lieutenant: The Witch-king lurks among the Nazgûl... (location hidden)');
+    }
+    if (lt.id === 'saruman-lt') {
+      // Remove one Rohirrim from reserve
+      if (G.troopSupply.rohirrim > 0) G.troopSupply.rohirrim--;
+    }
+  }
+  // Objectives that add shadow troops at setup
+  for (const obj of G.objectives) {
+    if (obj.setupShadowLoc && G.locState[obj.setupShadowLoc]) {
+      G.locState[obj.setupShadowLoc].shadowTroops++;
+      addLog(`Setup (${obj.name}): +1 shadow troop at ${LOCS[obj.setupShadowLoc].name}.`);
+    }
+    if (obj.setupShadowLocs) {
+      for (const [locId, count] of Object.entries(obj.setupShadowLocs)) {
+        if (G.locState[locId]) {
+          G.locState[locId].shadowTroops += count;
+          addLog(`Setup (${obj.name}): +${count} shadow troop(s) at ${LOCS[locId].name}.`);
+        }
+      }
+    }
+  }
   addLog(`Game started! ${numPlayers} players, ${difficulty} difficulty.`);
   return G;
 }
@@ -236,6 +280,18 @@ function recallNazgul(fromRegion) {
   }
 }
 
+const EORED_SLOT_LOCS = {
+  'north-ithilien': 'Ithilien', 'south-ithilien': 'Ithilien',
+  'woodland-realm': 'Mirkwood', 'old-forest-road': 'Mirkwood', 'southern-mirkwood': 'Mirkwood',
+};
+const EORED_SLOT_REGIONS = {
+  'rohan': 'Rohan', 'misty-mountains': 'Misty Mountains', 'gondor': 'Gondor',
+  'rhovanion': 'Rhovanion', 'enedwaith': 'Enedwaith',
+};
+function getEoredSlot(locId) {
+  return EORED_SLOT_LOCS[locId] || EORED_SLOT_REGIONS[LOCS[locId]?.region] || null;
+}
+
 // ── BATTLE ROLL ───────────────────────────────────────────────────────────────
 const BATTLE_FACES = ['rout','rout','exchange','exchange','overrun','nazgul'];
 
@@ -249,6 +305,8 @@ function applyBattleRolls(locId, rolls, charId) {
   const region = LOCS[locId].region;
   const nazgulPresent = (G.nazgul[region] || 0) > 0;
   const isEowyn = charId === 'eowyn';
+  const shadowBefore = ls.shadowTroops;
+  const hadRohirrim = (ls.friendly.rohirrim || 0) > 0;
   for (const r of rolls) {
     if (r === 'rout') {
       if (ls.shadowTroops > 0) { ls.shadowTroops--; addLog('  Rout: 1 shadow troop removed.'); }
@@ -260,7 +318,12 @@ function applyBattleRolls(locId, rolls, charId) {
       addLog('  Overrun: 1 friendly troop removed.');
     } else if (r === 'nazgul') {
       if (isEowyn) {
-        if (ls.shadowTroops > 0) { ls.shadowTroops--; addLog('  Éowyn: Nazgûl treated as Rout.'); }
+        if (ls.shadowTroops > 0) {
+          ls.shadowTroops--;
+          addLog('  Éowyn: Nazgûl treated as Rout.');
+          G.nazgulDeaths = (G.nazgulDeaths || 0) + 1;
+          checkShieldmaidenComplete();
+        }
       } else if (nazgulPresent) {
         removeFriendlyTroop(locId, 2); addLog('  Nazgûl! 2 friendly troops lost.');
       }
@@ -268,6 +331,19 @@ function applyBattleRolls(locId, rolls, charId) {
   }
   checkHavenLost(locId);
   if (checkBoromirHonorTrigger(locId)) G.ui.boromirHonorPending = locId;
+
+  // Ride with the Éored: offer slot when Éomer removes shadow troops with Rohirrim present
+  if (charId === 'eomer' && hadRohirrim && ls.shadowTroops < shadowBefore) {
+    const eoredObj = G.objectives?.find(o => o.id === 'ride-with-eored' && !o.done);
+    if (eoredObj) {
+      const slot = getEoredSlot(locId);
+      if (slot && !eoredObj.slotsFilled[slot]) {
+        G.ui.pendingEoredSlot = slot;
+      }
+    }
+  }
+
+  checkPassiveObjectives();
 }
 
 function rollBattle(locId, maxDice, charId) {
@@ -320,7 +396,10 @@ function checkHavenLost(locId) {
   const totalFriendly = Object.values(ls.friendly).reduce((a,b)=>a+b,0);
   if (ls.isHaven && ls.shadowTroops > 0 && totalFriendly === 0) {
     ls.isHaven = false;
-    ls.isShadowStronghold = true;
+    // Non-capturable locations (like Osgiliath via objective) don't become permanent strongholds
+    if (LOCS[locId].capturable) ls.isShadowStronghold = true;
+    const idx = G.capturedStrongholds.indexOf(locId);
+    if (idx >= 0) G.capturedStrongholds.splice(idx, 1);
     loseHope(3, `Haven lost: ${LOCS[locId].name}`);
     addLog(`⚠️ ${LOCS[locId].name} has fallen to shadow!`);
   }
@@ -507,6 +586,7 @@ function actionMuster(charId) {
   addLog(`${CHARS[charId].name} musters ${actual} ${t} troop(s) at ${LOCS[locId].name}.`);
   spendAction(charId);
   if (locId === 'dunland') checkFrecasHeirs();
+  checkPassiveObjectives();
   return { ok: true };
 }
 
@@ -531,7 +611,7 @@ function actionAttack(charId) {
 }
 
 // CAPTURE
-function actionCapture(charId) {
+function actionCapture(charId, payWith = 'valor') {
   if (!canAct(charId)) return err('Cannot act now.');
   const cs = G.charState[charId];
   const locId = cs.location;
@@ -543,17 +623,59 @@ function actionCapture(charId) {
   if (totalFriendly === 0) return err('Need at least 1 friendly troop to capture.');
   const p = G.players[G.currentPlayer];
   const cost = (charId === 'gimli') ? 2 : 3;
-  if ((p.tokens.valor || 0) < cost) return err(`Need ${cost} ✗ (Valor) to capture.`);
-  p.tokens.valor -= cost;
+
+  const infiltrateActive = locId === 'minas-morgul' &&
+    G.objectives.some(o => o.id === 'infiltrate-minas-morgul' && !o.done);
+  const layBareActive = locId === 'dol-guldur' && charId === 'galadriel' &&
+    G.objectives.some(o => o.id === 'lay-bare-pits' && !o.done);
+
+  if (payWith === 'stealth' && infiltrateActive) {
+    if ((p.tokens.stealth || 0) < cost) return err(`Need ${cost} ★ (Stealth) to capture via Infiltrate.`);
+    p.tokens.stealth -= cost;
+  } else if (payWith === 'resistance-valor' && layBareActive) {
+    if ((p.tokens.resistance || 0) < 2) return err('Need 2 ◎ (Resistance) for Lay Bare the Pits.');
+    if ((p.tokens.valor || 0) < 1) return err('Need 1 ⚔ (Valor) for Lay Bare the Pits.');
+    p.tokens.resistance -= 2;
+    p.tokens.valor -= 1;
+  } else {
+    if ((p.tokens.valor || 0) < cost) return err(`Need ${cost} ⚔ (Valor) to capture.`);
+    p.tokens.valor -= cost;
+  }
+
   ls.isShadowStronghold = false;
   ls.isHaven = true;
   G.capturedStrongholds.push(locId);
   G.eyeRegion = LOCS[locId].region;
   gainHope(2, `Captured ${LOCS[locId].name}`);
   addLog(`✅ ${CHARS[charId].name} captures ${LOCS[locId].name}! It is now a haven.`);
-  // Special captured locations stop spawning
   spendAction(charId);
+
+  if (infiltrateActive) {
+    const obj = G.objectives.find(o => o.id === 'infiltrate-minas-morgul');
+    obj.done = true;
+    p.tokens.stealth = (p.tokens.stealth || 0) + 2;
+    addLog(`Infiltrate Minas Morgul complete! +2 ★. Peek top 2 shadow cards.`);
+    const topCards = G.shadowDeck.slice(-2).reverse();
+    return { ok: true, infiltrateCards: topCards, deckSize: G.shadowDeck.length };
+  }
+
+  // Lay Bare the Pits — capture is step 1; objective completes once 3+ Elven troops also present
+  if (layBareActive) checkLayBarePitsComplete();
+
+  checkPassiveObjectives();
   return { ok: true };
+}
+
+// Called from UI after player chooses which shadow cards to remove
+function actionInfiltrateResolve(removeTop, removeSecond) {
+  const len = G.shadowDeck.length;
+  if (len === 0) return;
+  const toRemove = new Set();
+  if (removeTop && len >= 1) toRemove.add(len - 1);
+  if (removeSecond && len >= 2) toRemove.add(len - 2);
+  G.shadowDeck = G.shadowDeck.filter((_, i) => !toRemove.has(i));
+  const count = toRemove.size;
+  addLog(`Infiltrate: ${count > 0 ? count + ' shadow card(s) removed from game.' : 'No shadow cards removed.'}`);
 }
 
 // DESTROY THE RING
@@ -625,22 +747,163 @@ function actionCompleteObjective(charId, objectiveId) {
   }
 
   if (objectiveId === 'saruman-staff') {
-    if (cs.location !== 'isengard') return err('Must be in Isengard.');
-    if (!G.capturedStrongholds.includes('isengard')) return err('Isengard must be captured first.');
+    if (!G.capturedStrongholds.includes('isengard')) return err('Isengard must be a captured haven first.');
+    const rohanFree = Object.entries(LOCS).every(([id, loc]) =>
+      loc.region !== 'rohan' ||
+      (G.locState[id].shadowTroops === 0 && (!loc.capturable || G.capturedStrongholds.includes(id)))
+    );
+    if (!rohanFree) return err('Every Rohan location must be free of shadow troops and shadow strongholds.');
     obj.done = true;
-    gainHope(2, 'Saruman, Your Staff Is Broken');
-    addLog('✅ Saruman, Your Staff Is Broken completed!');
+    p.tokens.resistance = (p.tokens.resistance || 0) + 1;
+    addLog('✅ Saruman, Your Staff Is Broken completed! Current player gains 1 ◎.');
     spendAction(charId);
+    checkAfterObjectiveComplete();
     return { ok: true };
   }
 
   if (objectiveId === 'challenge-sauron') {
-    if (cs.location !== 'barad-dur') return err('Must be in Barad-dûr.');
-    if (!G.capturedStrongholds.includes('barad-dur')) return err('Barad-dûr must be captured first.');
+    if (cs.location !== 'north-ithilien') return err('Must be in North Ithilien.');
+    const f = G.locState['north-ithilien'].friendly;
+    if ((f.gondor || 0) < 3) return err('Need at least 3 Gondor troops at North Ithilien.');
+    if ((f.elven || 0) < 2)  return err('Need at least 2 Elven troops at North Ithilien.');
+    if ((f.dwarven || 0) < 2) return err('Need at least 2 Dwarven troops at North Ithilien.');
     obj.done = true;
-    gainHope(2, 'Challenge Sauron');
-    addLog('✅ Challenge Sauron completed!');
+    G.eyeRegion = LOCS['north-ithilien'].region;
+    addLog(`Eye of Sauron shifts to ${REGIONS[G.eyeRegion]?.name || G.eyeRegion}.`);
+    let moved = 0;
+    for (const [id, ls] of Object.entries(G.locState)) {
+      if (LOCS[id].region === 'mordor' && id !== 'udun' && ls.shadowTroops > 0) {
+        G.locState['udun'].shadowTroops += ls.shadowTroops;
+        moved += ls.shadowTroops;
+        ls.shadowTroops = 0;
+      }
+    }
+    addLog(`✅ Challenge Sauron completed! ${moved} shadow troop${moved!==1?'s':''} consolidated to Udûn.`);
     spendAction(charId);
+    checkAfterObjectiveComplete();
+    return { ok: true };
+  }
+
+  if (objectiveId === 'hobbits-pledge') {
+    if (charId !== 'merry-pippin') return err('Only Merry & Pippin can complete this objective.');
+    const havenCategory = {
+      'grey-havens':'elf', 'rivendell':'elf', 'lorien':'elf', 'woodland-realm':'elf',
+      'helms-deep':'rohan', 'erebor':'dwarf', 'minas-tirith':'gondor', 'dol-amroth':'gondor',
+    };
+    const cat = havenCategory[cs.location];
+    if (!cat) return err('Merry & Pippin must be at a qualifying haven (Grey Havens, Rivendell, Lórien, Woodland Realm, Helm\'s Deep, Erebor, Minas Tirith, or Dol Amroth).');
+    if (!obj.state) obj.state = { categoriesFilled: [] };
+    if (obj.state.categoriesFilled.includes(cat)) return err(`The ${cat} category is already filled.`);
+    const locRegion = LOCS[cs.location].region;
+    const matchCard = p.hand.find(c => c.type === 'region' && LOCS[c.location]?.region === locRegion);
+    if (!matchCard) return err(`Need a region card matching ${REGIONS[locRegion]?.name || locRegion} in hand.`);
+    p.hand = p.hand.filter(c => c.id !== matchCard.id);
+    G.playerDiscard.push(matchCard);
+    obj.state.categoriesFilled.push(cat);
+    addLog(`Hobbits Pledge: ${cat} category filled at ${LOCS[cs.location].name}.`);
+    if (obj.state.categoriesFilled.length >= 2) {
+      obj.done = true;
+      gainHope(1, "Hobbits Pledge Their Loyalty");
+      p.tokens.friendship = (p.tokens.friendship || 0) + 2;
+      addLog("✅ Hobbits Pledge Their Loyalty completed! Gain 1 hope, 2 ♥ for Merry & Pippin's player.");
+      checkAfterObjectiveComplete();
+    }
+    spendAction(charId);
+    return { ok: true, categoriesFilled: obj.state.categoriesFilled };
+  }
+
+  if (objectiveId === 'confront-balrog') {
+    if (charId !== 'gandalf') return err('Only Gandalf can confront the Balrog.');
+    if (cs.location !== 'moria') return err('Gandalf must be in Moria.');
+    // Roll 3 dice and return results; hope loss applied client-side after spending
+    const results = genBattleRolls(3, 7);
+    addLog(`Gandalf confronts the Balrog! Rolled: ${results.join(', ')}`);
+    spendAction(charId);
+    return { ok: true, balrogRoll: results, pendingResolution: true };
+  }
+
+  if (objectiveId === 'shelobs-lair') {
+    if (charId !== 'frodo-sam') return err('Only Frodo & Sam can complete Shelob\'s Lair.');
+    if (cs.location !== 'minas-morgul') return err('Frodo & Sam must be in Minas Morgul.');
+    const gollumPlayerIdx = G.players.findIndex(pl => pl.chars.includes('gollum'));
+    if (gollumPlayerIdx === -1) return err('Gollum must be assigned for this objective.');
+    if (G.players.length > 1 && gollumPlayerIdx === G.currentPlayer)
+      return err('In multiplayer, the Frodo & Sam player cannot also control Gollum.');
+    // Count Gollum player's resistance resources
+    const gollumPlayer = G.players[gollumPlayerIdx];
+    const isSolo = G.players.length === 1;
+    let gollumResistancePenalty;
+    if (isSolo) {
+      // Solo: count resistance cards in the current player's hand
+      gollumResistancePenalty = p.hand.filter(c => c.symbol === 'resistance').length;
+    } else {
+      const resCards = gollumPlayer.hand.filter(c => c.symbol === 'resistance').length;
+      const resTokens = gollumPlayer.tokens.resistance || 0;
+      gollumResistancePenalty = resCards + resTokens;
+    }
+    const rolls = genBattleRolls(3, 7);
+    addLog(`Shelob's Lair: Frodo rolled ${rolls.join(', ')}. Gollum penalty: ${gollumResistancePenalty} hope.`);
+    spendAction(charId);
+    return { ok: true, sheloblRoll: rolls, gollumPenalty: gollumResistancePenalty };
+  }
+
+  if (objectiveId === 'rangers-eriador') {
+    const eriadorLocs = Object.entries(LOCS).filter(([,l]) => l.region === 'eriador').map(([id]) => id);
+    const hasShadow = eriadorLocs.some(id => G.locState[id].shadowTroops > 0 ||
+      (LOCS[id].capturable && !G.capturedStrongholds.includes(id) && G.locState[id].isShadowStronghold));
+    if (hasShadow) return err('Eriador is not yet free of shadow troops and strongholds.');
+    const missingTroop = eriadorLocs.find(id => {
+      const f = G.locState[id].friendly;
+      return (f.dwarven + f.elven + f.rohirrim + f.gondor) === 0;
+    });
+    if (missingTroop) return err(`${LOCS[missingTroop].name} has no friendly troop.`);
+    obj.done = true;
+    gainHope(1, 'Rangers Secure Eriador');
+    addLog('✅ Rangers Secure Eriador completed! Gain 1 hope. Move any Eriador troops to Tharbad or Weather Hills.');
+    spendAction(charId);
+    checkAfterObjectiveComplete();
+    return { ok: true, canMoveTroopsFrom: eriadorLocs };
+  }
+
+  if (objectiveId === 'unseat-denethor') {
+    if (cs.location !== 'minas-tirith') return err('Must be in Minas Tirith.');
+    const others = Object.entries(G.charState).filter(([cid,c]) => cid !== charId && c.location === 'minas-tirith' && c.alive);
+    if (others.length === 0) return err('At least 1 other character must also be in Minas Tirith.');
+    if ((p.tokens.stealth || 0) < 2) return err('Need 2 ★ (Stealth).');
+    if ((p.tokens.friendship || 0) < 1) return err('Need 1 ♥ (Friendship).');
+    if ((p.tokens.valor || 0) < 1) return err('Need 1 ⚔ (Valor).');
+    p.tokens.stealth -= 2;
+    p.tokens.friendship -= 1;
+    p.tokens.valor -= 1;
+    // Return reserved gondor troops to supply
+    const reserved = obj.reservedTroops || 0;
+    G.troopSupply.gondor = (G.troopSupply.gondor || 0) + reserved;
+    obj.done = true;
+    gainHope(1, 'Unseat Denethor');
+    G.ui.pendingUnseatDenethorReward = true;
+    addLog(`✅ Denethor is unseated! ${reserved} Gondor troops returned to supply. +1 hope.`);
+    spendAction(charId);
+    checkAfterObjectiveComplete();
+    return { ok: true };
+  }
+
+  if (objectiveId === 'arwen-banner') {
+    if (charId !== 'arwen') return err('Only Arwen can complete this objective.');
+    if (cs.location !== 'minas-tirith') return err('Arwen must be in Minas Tirith.');
+    if (!G.locState['minas-tirith'].isHaven && !G.capturedStrongholds.includes('minas-tirith'))
+      return err('Minas Tirith must be a captured haven.');
+    const f = G.locState['minas-tirith'].friendly;
+    if ((f.gondor || 0) < 1) return err('Need at least 1 Gondor troop in Minas Tirith.');
+    if ((f.rohirrim || 0) < 1) return err('Need at least 1 Rohirrim troop in Minas Tirith.');
+    if ((f.elven || 0) < 1) return err('Need at least 1 Elven troop in Minas Tirith.');
+    if ((f.dwarven || 0) < 1) return err('Need at least 1 Dwarven troop in Minas Tirith.');
+    if ((p.tokens.friendship || 0) < 1) return err('Need 1 ♥ (Friendship).');
+    p.tokens.friendship--;
+    obj.done = true;
+    gainHope(1, 'Arwen Unfurls the Banner');
+    addLog('✅ Arwen Unfurls the Banner! +1 hope. All peoples of Middle-earth united at Minas Tirith.');
+    spendAction(charId);
+    checkAfterObjectiveComplete();
     return { ok: true };
   }
 
@@ -780,7 +1043,358 @@ function allNonRingObjectivesDone() {
   return G.objectives.filter(o => o.id !== 'destroy-ring').every(o => o.done);
 }
 
+function checkShieldmaidenComplete() {
+  const obj = G.objectives.find(o => o.id === 'shieldmaiden' && !o.done);
+  if (!obj) return;
+  if ((G.nazgulDeaths || 0) < 2) return;
+  const rohanFree = Object.entries(LOCS).every(([id, loc]) =>
+    loc.region !== 'rohan' ||
+    (G.locState[id].shadowTroops === 0 && (!loc.capturable || G.capturedStrongholds.includes(id)))
+  );
+  if (!rohanFree) return;
+  obj.done = true;
+  gainHope(1, 'Shieldmaiden No Longer');
+  addLog('✅ Shieldmaiden No Longer completed! Gain 1 hope.');
+  checkAfterObjectiveComplete();
+}
+
+function checkRangersEriadorComplete() {
+  const obj = G.objectives.find(o => o.id === 'rangers-eriador' && !o.done);
+  if (!obj) return;
+  const eriadorLocs = Object.entries(LOCS).filter(([,l]) => l.region === 'eriador').map(([id]) => id);
+  const hasShadow = eriadorLocs.some(id =>
+    G.locState[id].shadowTroops > 0 ||
+    (LOCS[id].capturable && !G.capturedStrongholds.includes(id) && G.locState[id].isShadowStronghold)
+  );
+  if (hasShadow) return;
+  const missingTroop = eriadorLocs.find(id => {
+    const f = G.locState[id].friendly;
+    return (f.dwarven + f.elven + f.rohirrim + f.gondor) === 0;
+  });
+  if (missingTroop) return;
+  obj.done = true;
+  gainHope(1, 'Rangers Secure Eriador');
+  addLog('✅ Rangers Secure Eriador completed! Gain 1 hope. You may move Eriador troops to Tharbad or Weather Hills.');
+  checkAfterObjectiveComplete();
+}
+
+function checkLayBarePitsComplete() {
+  const obj = G.objectives.find(o => o.id === 'lay-bare-pits' && !o.done);
+  if (!obj) return;
+  if (!G.capturedStrongholds.includes('dol-guldur')) return;
+  if ((G.locState['dol-guldur']?.friendly?.elven || 0) < 3) return;
+  obj.done = true;
+  const galadrielHere = G.charState['galadriel']?.location === 'dol-guldur';
+  if (galadrielHere) gainHope(1, 'Lay Bare the Pits: Galadriel present');
+  addLog(`✅ Lay Bare the Pits complete!${galadrielHere ? ' +1 hope (Galadriel present).' : ''}`);
+  checkAfterObjectiveComplete();
+}
+
+// Move friendly troops from Haradwaith to Pelargir (Subdue Umbar reward)
+function actionSubdueUmbarMove(moveCounts) {
+  // moveCounts: { locId: { dwarven:0, elven:0, rohirrim:0, gondor:0 }, ... }
+  for (const [fromId, types] of Object.entries(moveCounts)) {
+    const from = G.locState[fromId];
+    const to = G.locState['pelargir'];
+    if (!from || !to) continue;
+    for (const [t, n] of Object.entries(types)) {
+      const actual = Math.min(n, from.friendly[t] || 0);
+      if (actual <= 0) continue;
+      from.friendly[t] -= actual;
+      to.friendly[t] = (to.friendly[t] || 0) + actual;
+      addLog(`Subdue Umbar: ${actual} ${t} troop(s) moved from ${LOCS[fromId].name} to Pelargir.`);
+    }
+  }
+}
+
+const MIRKWOOD_LOCS = ['woodland-realm', 'old-forest-road', 'southern-mirkwood'];
+
+function checkBringLightMirkwoodComplete() {
+  const obj = G.objectives.find(o => o.id === 'bring-light-mirkwood' && !o.done);
+  if (!obj) return;
+  const hasShadow = MIRKWOOD_LOCS.some(id => G.locState[id].shadowTroops > 0);
+  if (hasShadow) return;
+  const missingElven = MIRKWOOD_LOCS.find(id => (G.locState[id].friendly.elven || 0) < 1);
+  if (missingElven) return;
+  obj.done = true;
+  gainHope(1, 'Bring Light to Mirkwood');
+  G.ui.pendingBringLightMirkwoodReward = true;
+  addLog('✅ Bring Light to Mirkwood complete! +1 hope. Choose a Mirkwood location to concentrate your Elven troops.');
+  checkAfterObjectiveComplete();
+}
+
+function actionBringLightMirkwoodMove(targetLocId, moveCounts) {
+  // moveCounts: { locId: n } — elven troops to move from each other Mirkwood location to target
+  const to = G.locState[targetLocId];
+  if (!to) return;
+  for (const [fromId, n] of Object.entries(moveCounts)) {
+    if (fromId === targetLocId) continue;
+    const from = G.locState[fromId];
+    const actual = Math.min(n, from.friendly.elven || 0);
+    if (actual <= 0) continue;
+    from.friendly.elven -= actual;
+    to.friendly.elven = (to.friendly.elven || 0) + actual;
+    addLog(`Bring Light to Mirkwood: ${actual} Elven troop(s) from ${LOCS[fromId].name} → ${LOCS[targetLocId].name}.`);
+  }
+}
+
+function checkAvengeBalinComplete() {
+  const obj = G.objectives.find(o => o.id === 'avenge-balin' && !o.done);
+  if (!obj) return;
+  if (!G.capturedStrongholds.includes('moria')) return;
+  if ((G.locState['moria'].friendly.dwarven || 0) < 2) return;
+  obj.done = true;
+  G.ui.pendingAvengeBalinReward = true;
+  addLog('✅ Avenge Balin complete! Move Dwarven troops to Moria; reach 4 for 2 Valor.');
+  checkAfterObjectiveComplete();
+}
+
+function actionSecureOsgiliath(payWith) {
+  if (!canAct('faramir')) return err('Cannot act now.');
+  const cs = G.charState['faramir'];
+  if (cs.location !== 'osgiliath') return err('Faramir must be in Osgiliath.');
+  const obj = G.objectives?.find(o => o.id === 'secure-osgiliath' && !o.done);
+  if (!obj) return err('Secure the Crossing objective is not active.');
+  const ls = G.locState['osgiliath'];
+  if (ls.shadowTroops > 0) return err('Shadow troops still present — defeat them first.');
+  const totalF = Object.values(ls.friendly).reduce((a,b)=>a+b,0);
+  if (totalF === 0) return err('At least 1 friendly troop must be present.');
+  const p = G.players[G.currentPlayer];
+  if (payWith === 'resistance-stealth') {
+    if ((p.tokens.resistance || 0) < 2) return err('Need 2 ◎ (Resistance).');
+    if ((p.tokens.stealth || 0) < 1) return err('Need 1 ★ (Stealth).');
+    p.tokens.resistance -= 2;
+    p.tokens.stealth -= 1;
+  } else {
+    if ((p.tokens.valor || 0) < 3) return err('Need 3 ⚔ (Valor).');
+    p.tokens.valor -= 3;
+  }
+  ls.isHaven = true;
+  G.capturedStrongholds.push('osgiliath');
+  gainHope(2, 'Secured Osgiliath');
+  obj.done = true;
+  G.ui.pendingSecureOsgiliathReward = true;
+  addLog('✅ Faramir secures the Crossing of the Anduin! Osgiliath is now a haven (+2 hope).');
+  spendAction('faramir');
+  checkAfterObjectiveComplete();
+  return { ok: true };
+}
+
+function actionCallOathbreakers() {
+  if (!canAct('aragorn')) return err('Cannot act now.');
+  const cs = G.charState['aragorn'];
+  if (cs.location !== 'edoras') return err('Aragorn must be in Edoras.');
+  const obj = G.objectives?.find(o => o.id === 'oathbreakers-duty' && !o.done);
+  if (!obj) return err('Oathbreakers Fulfill Their Duty objective is not active.');
+  if (obj.aragornCalledOaths) return err('The Oathbreakers have already been called this game.');
+  // Move Aragorn to Erech (free — no stealth cost)
+  cs.location = 'erech';
+  // Add 2 shadow troops to Pelargir
+  G.locState['pelargir'].shadowTroops += 2;
+  checkHavenLost('pelargir');
+  // Move all Umbar shadow troops to Pelargir
+  const umbarShadow = G.locState['umbar'].shadowTroops || 0;
+  if (umbarShadow > 0) {
+    G.locState['umbar'].shadowTroops = 0;
+    G.locState['pelargir'].shadowTroops += umbarShadow;
+    checkHavenLost('pelargir');
+    addLog(`Oathbreakers: ${umbarShadow} shadow troop(s) moved from Umbar to Pelargir.`);
+  }
+  addLog(`Aragorn rides to Erech! +2 shadow troops to Pelargir. The Dead Awaken.`);
+  obj.aragornCalledOaths = true;
+  G.ui.pendingOathbreakersErech = Math.min(G.troopSupply?.gondor || 0, 3);
+  spendAction('aragorn');
+  checkPassiveObjectives();
+  return { ok: true };
+}
+
+function checkOathbreakersComplete() {
+  const obj = G.objectives?.find(o => o.id === 'oathbreakers-duty' && !o.done);
+  if (!obj || !obj.aragornCalledOaths) return;
+  const gondorLocs = Object.entries(LOCS).filter(([,l]) => l.region === 'gondor').map(([id]) => id);
+  const hasShadow = gondorLocs.some(id => {
+    const ls = G.locState[id];
+    return ls.shadowTroops > 0 || (LOCS[id].capturable && ls.isShadowStronghold && !G.capturedStrongholds.includes(id));
+  });
+  if (hasShadow) return;
+  obj.done = true;
+  gainHope(1, 'Oathbreakers Fulfill Their Duty');
+  addLog('✅ Oathbreakers Fulfill Their Duty complete! Gondor is free. +1 hope.');
+  checkAfterObjectiveComplete();
+}
+
+function actionEoredFillSlot(slot, fill) {
+  const obj = G.objectives?.find(o => o.id === 'ride-with-eored' && !o.done);
+  if (!obj || !fill) return;
+  if (obj.slotsFilled[slot]) return;
+  obj.slotsFilled[slot] = true;
+  const count = Object.keys(obj.slotsFilled).length;
+  addLog(`Ride with the Éored: ${slot} slot filled (${count}/4).`);
+  if (count >= 4) {
+    obj.done = true;
+    gainHope(1, 'Ride with the Éored');
+    addLog('✅ Ride with the Éored complete! +1 hope. Held shadow troops returned to supply.');
+    checkAfterObjectiveComplete();
+  }
+}
+
+function actionAvengeBalinMove(moveCounts, takeValor) {
+  const to = G.locState['moria'];
+  for (const [fromId, n] of Object.entries(moveCounts)) {
+    const from = G.locState[fromId];
+    const actual = Math.min(n, from?.friendly?.dwarven || 0);
+    if (actual <= 0) continue;
+    from.friendly.dwarven -= actual;
+    to.friendly.dwarven = (to.friendly.dwarven || 0) + actual;
+    addLog(`Avenge Balin: ${actual} Dwarven troop(s) from ${LOCS[fromId].name} → Moria.`);
+  }
+  if (takeValor && (to.friendly.dwarven || 0) >= 4) {
+    const p = G.players[G.currentPlayer];
+    p.tokens.valor = (p.tokens.valor || 0) + 2;
+    addLog('Avenge Balin: current player gains 2 ⚔ Valor!');
+  }
+}
+
+function checkLiftShadowDwarvenComplete() {
+  const obj = G.objectives.find(o => o.id === 'lift-shadow-dwarven' && !o.done);
+  if (!obj) return;
+  const eredLuin = G.locState['ered-luin'];
+  if ((eredLuin.shadowTroops || 0) > 0) return;
+  if ((eredLuin.friendly.dwarven || 0) < 4) return;
+  const lakeTown = G.locState['lake-town'];
+  if ((lakeTown.shadowTroops || 0) > 0) return;
+  if (lakeTown.isShadowStronghold) return;
+  obj.done = true;
+  gainHope(1, 'Lift Shadow from Dwarven Lands');
+  G.ui.pendingLiftShadowValorOffer = true;
+  addLog('✅ Lift Shadow from Dwarven Lands complete! +1 hope. Current player may take 2 ⚔ Valor.');
+  checkAfterObjectiveComplete();
+}
+
+function actionLiftShadowTakeValor(take) {
+  if (take) {
+    const p = G.players[G.currentPlayer];
+    p.tokens.valor = (p.tokens.valor || 0) + 2;
+    addLog('Lift Shadow from Dwarven Lands: +2 ⚔ Valor gained.');
+  }
+}
+
+function checkPassiveObjectives() {
+  checkShieldmaidenComplete();
+  checkRangersEriadorComplete();
+  checkSubdueUmbarComplete();
+  checkLayBarePitsComplete();
+  checkBringLightMirkwoodComplete();
+  checkAvengeBalinComplete();
+  checkLiftShadowDwarvenComplete();
+  checkOathbreakersComplete();
+}
+
+const HARADWAITH_LOCS = ['umbar', 'near-harad', 'harondor'];
+
+function checkSubdueUmbarComplete() {
+  const obj = G.objectives.find(o => o.id === 'subdue-umbar' && !o.done);
+  if (!obj) return;
+  const umbarHaven = G.capturedStrongholds.includes('umbar');
+  const allClear = HARADWAITH_LOCS.every(id => {
+    const ls = G.locState[id];
+    const f = ls.friendly;
+    return ls.shadowTroops === 0 && (f.dwarven + f.elven + f.rohirrim + f.gondor) >= 1;
+  });
+  if (!umbarHaven && !allClear) return;
+  obj.done = true;
+  G.ui.pendingSubdueUmbarReward = true;
+  addLog('✅ Subdue Umbar complete! Move any friendly troops from Haradwaith to Pelargir.');
+  checkAfterObjectiveComplete();
+}
+
+// Called when Balrog battle resolution is confirmed by the UI
+// ignoredIndices: Set of die indices (0,1,2) to ignore (each costs 1 Valor)
+// friendshipSpend: number of Friendship tokens to spend (each reduces hope loss by 1)
+// gollumPenalty: pre-computed from the roll return value
+function actionResolveShelob(ignoredIndices, friendshipSpend, rolls, gollumPenalty) {
+  const hopeLoss = { rout: 0, exchange: 2, overrun: 1, nazgul: 3 };
+  const p = G.players[G.currentPlayer];
+  const valorCost = ignoredIndices.size;
+  const v = Math.min(valorCost, p.tokens.valor || 0);
+  p.tokens.valor = (p.tokens.valor || 0) - v;
+  const f = Math.min(friendshipSpend || 0, p.tokens.friendship || 0);
+  p.tokens.friendship = (p.tokens.friendship || 0) - f;
+
+  const diceLoss = rolls.reduce((sum, r, i) => ignoredIndices.has(i) ? sum : sum + (hopeLoss[r] || 0), 0);
+  const totalLoss = Math.max(0, diceLoss + (gollumPenalty || 0) - f);
+
+  const obj = G.objectives.find(o => o.id === 'shelobs-lair');
+  if (obj) obj.done = true;
+  checkAfterObjectiveComplete();
+
+  if (totalLoss > 0) loseHope(totalLoss, "Shelob's Lair");
+  else addLog("Shelob's Lair: Frodo lost no hope — gains 1 bonus action!");
+
+  if (totalLoss === 0 && G.turn.charActions['frodo-sam'] !== undefined) {
+    G.turn.charActions['frodo-sam']++;
+  }
+  addLog(`Shelob's Lair resolved. ${v} ⚔ and ${f} ♥ spent.`);
+}
+
+function actionResolveBalrog(spendResistance, spendValor) {
+  const p = G.players[G.currentPlayer];
+  const r = Math.min(spendResistance || 0, p.tokens.resistance || 0);
+  const v = Math.min(spendValor || 0, p.tokens.valor || 0);
+  p.tokens.resistance = (p.tokens.resistance || 0) - r;
+  p.tokens.valor = (p.tokens.valor || 0) - v;
+  // Hope loss is computed by the UI from the returned roll; we just spend tokens here
+  // Then remove Gandalf from the board
+  const obj = G.objectives.find(o => o.id === 'confront-balrog');
+  if (obj) obj.done = true;
+  G.gandalfState = 'awaiting-white';
+  G.charState['gandalf'].alive = false;
+  addLog('Gandalf has fallen into shadow... but he shall return. Awaiting the next Skies Darken.');
+  checkAfterObjectiveComplete();
+  return { ok: true };
+}
+
 // ── ÉOMER ABILITY ────────────────────────────────────────────────────────────
+function getSureShotTargets() {
+  const cs = G.charState['legolas'];
+  if (!cs || !cs.alive) return [];
+  const here = cs.location;
+  const adjacent = CONNECTIONS
+    .filter(c => c.a === here || c.b === here)
+    .map(c => c.a === here ? c.b : c.a);
+  return [here, ...adjacent].filter(id => (G.locState[id]?.shadowTroops || 0) > 0);
+}
+
+function actionSureShot(targetLocId, placeOnCard = false) {
+  const legolasPlayerIdx = G.players.findIndex(pl => pl.chars.includes('legolas'));
+  if (legolasPlayerIdx !== G.currentPlayer) return err('Not the Legolas player\'s turn.');
+  const cs = G.charState['legolas'];
+  if (!cs || !cs.alive) return err('Legolas is not in play.');
+  const validTargets = getSureShotTargets();
+  if (!validTargets.includes(targetLocId)) return err('Invalid Sure Shot target — must be Legolas\'s location or adjacent, and have a shadow troop.');
+  const p = G.players[legolasPlayerIdx];
+  if ((p.tokens.stealth || 0) < 1) return err('Need 1 ★ (Stealth) for Sure Shot.');
+  p.tokens.stealth--;
+  G.locState[targetLocId].shadowTroops--;
+  checkHavenLost(targetLocId);
+
+  const sixObj = placeOnCard && G.objectives?.find(o => o.id === 'that-makes-six' && !o.done);
+  if (sixObj) {
+    sixObj.heldTroops = (sixObj.heldTroops || 0) + 1;
+    addLog(`Sure Shot: shadow troop held on card (${sixObj.heldTroops}/6).`);
+    if (sixObj.heldTroops >= 6) {
+      sixObj.done = true;
+      gainHope(1, 'That Makes Six');
+      addLog('✅ That Makes Six complete! +1 hope. 6 held troops returned to supply.');
+      checkAfterObjectiveComplete();
+    }
+  } else {
+    addLog(`Legolas: Sure Shot removes 1 shadow troop from ${LOCS[targetLocId].name}.`);
+  }
+  checkPassiveObjectives();
+  return { ok: true };
+}
+
 function actionEomerBonusTravel(destLocId) {
   if (G.turn.eomerBonusTravelLeft <= 0) return err('Bonus travel already used this turn.');
   if (G.turn.eomerBonusForfeited) return err('Bonus travel forfeited — another character has already acted.');
@@ -953,6 +1567,14 @@ function resolveSkiesDarken(card) {
       G.shadowDiscard = [];
       addLog('Shadow discard shuffled back into deck!');
       break;
+  }
+  // Gandalf the White arrives on the next Skies Darken after the Balrog
+  if (G.gandalfState === 'awaiting-white') {
+    G.gandalfState = 'white';
+    G.charState['gandalf'].alive = true;
+    G.charState['gandalf'].location = 'lorien';
+    gainHope(2, 'Gandalf the White arrives!');
+    addLog('⚪ Gandalf the White has returned! He appears in Lórien. Gain 2 hope.');
   }
 }
 

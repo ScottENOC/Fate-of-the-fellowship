@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Fate of the Fellowship</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -29,10 +30,11 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 
 /* ── GAME LAYOUT ── */
 #game{display:none;flex:1;overflow:hidden;flex-direction:row}
-#map-panel{flex:1;position:relative;overflow:hidden;background:#0a0805}
-#map-wrap{position:relative;width:100%;height:100%}
-#map-img{display:block;width:100%;height:100%;object-fit:contain;object-position:top left}
-#map-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#map-panel{flex:1;position:relative;overflow:hidden;background:#0a0805;touch-action:none}
+#map-wrap{position:relative;width:100%;height:100%;transform-origin:0 0;cursor:grab;will-change:transform}
+#map-wrap.dragging{cursor:grabbing}
+#map-img{display:block;width:100%;height:100%;object-fit:contain;object-position:top left;user-select:none;-webkit-user-drag:none}
+#map-svg{position:absolute;top:0;left:0;pointer-events:none}
 #map-svg.interactive{pointer-events:all}
 
 /* ── SIDEBAR ── */
@@ -160,13 +162,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
     <h3>Difficulty</h3>
     <div class="setup-row">
       <label>Level</label>
-      <select id="difficulty">
-        <option value="introductory">Introductory (4 Skies Darken)</option>
-        <option value="standard" selected>Standard (5 Skies Darken)</option>
-        <option value="heroic">Heroic (5 SD, 5 Objectives)</option>
-        <option value="epic">Epic (6 SD, 5 Objectives)</option>
-        <option value="legendary">Legendary (6 SD, 6 Objectives)</option>
-      </select>
+      <select id="difficulty"></select>
     </div>
   </div>
   <div class="setup-card">
@@ -181,7 +177,14 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
       <div id="prefs-obj" style="margin-top:8px"></div>
     </details>
   </div>
-  <button class="btn" onclick="startGame()">Begin the Quest</button>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+    <button class="btn" onclick="startGame()">Begin the Quest</button>
+    <button class="btn" id="load-btn" onclick="promptLoadGame()" style="display:none">Load Saved Game</button>
+  </div>
+  <div id="legacy-panel" style="display:none;background:#1a1510;border:1px solid #4a3820;border-radius:8px;padding:16px 24px;width:460px">
+    <h3 style="color:#c8a050;margin-bottom:8px;font-size:1em;text-transform:uppercase;letter-spacing:1px">Legacy Points <span id="lp-total" style="color:#f0c040"></span></h3>
+    <div id="legacy-boons"></div>
+  </div>
 </div>
 
 <!-- ── GAME SCREEN ─────────────────────────────────────────── -->
@@ -264,6 +267,10 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
     </div>
 
     <div id="log-area"><div class="section-title" style="margin-bottom:4px">Game Log</div><div id="log-list"></div></div>
+    <div style="padding:6px 10px;border-top:1px solid #3a2810;display:flex;gap:6px">
+      <button class="btn btn-sm" onclick="saveGame();showModal('Saved','Game saved to this device.')">💾 Save</button>
+      <button class="btn btn-sm" style="color:#906040;border-color:#906040" onclick="if(confirm('Return to setup? Unsaved progress will be lost.'))location.reload()">↩ Menu</button>
+    </div>
   </div>
 </div>
 
@@ -420,6 +427,245 @@ function getCardPrefs() {
 
 buildCardPrefsUI();
 
+// ── PER-DEVICE RECORDS & DIFFICULTY UNLOCK ───────────────────────────────────
+const RECORD_KEY = 'fof-wins';
+const LP_KEY     = 'fof-legacy-points';
+const BOONS_KEY  = 'fof-boons';
+const SAVE_KEY   = 'fof-save';
+
+function getWinRecord() {
+  try { return JSON.parse(localStorage.getItem(RECORD_KEY) || '{}'); } catch { return {}; }
+}
+function recordWin(difficulty) {
+  const rec = getWinRecord();
+  rec[difficulty] = (rec[difficulty] || 0) + 1;
+  localStorage.setItem(RECORD_KEY, JSON.stringify(rec));
+  // Award legacy points
+  let pts = 0;
+  const plusMatch = difficulty.match(/^legendary\+(\d+)$/);
+  if (plusMatch) pts = 1 + parseInt(plusMatch[1]);
+  else if (difficulty === 'legendary') pts = 1;
+  if (pts > 0) {
+    const cur = parseInt(localStorage.getItem(LP_KEY) || '0');
+    localStorage.setItem(LP_KEY, String(cur + pts));
+  }
+}
+function getLegacyPoints() { return parseInt(localStorage.getItem(LP_KEY) || '0'); }
+function getBoons() {
+  try { return JSON.parse(localStorage.getItem(BOONS_KEY) || '{}'); } catch { return {}; }
+}
+function setBoon(id, val) {
+  const b = getBoons(); b[id] = val; localStorage.setItem(BOONS_KEY, JSON.stringify(b));
+}
+
+function buildDifficultySelect() {
+  const sel = document.getElementById('difficulty');
+  const rec = getWinRecord();
+  const opts = [
+    { v:'introductory', label:'Introductory (4 Skies Darken)' },
+    { v:'standard',     label:'Standard (5 Skies Darken)' },
+    { v:'heroic',       label:'Heroic (5 SD, 5 Objectives)' },
+    { v:'epic',         label:'Epic (6 SD, 5 Objectives)' },
+    { v:'legendary',    label:'Legendary (6 SD, 6 Objectives)' },
+  ];
+  // Add legendary+ levels up to the next unlock or max 24
+  const MAX_PLUS = 24;
+  const DEV_MODE = true; // set false in production to gate behind wins
+  const wonLegendary = DEV_MODE || (rec['legendary'] || 0) > 0;
+  if (wonLegendary) {
+    for (let i = 1; i <= MAX_PLUS; i++) {
+      const key = `legendary+${i}`;
+      const prevKey = i === 1 ? 'legendary' : `legendary+${i-1}`;
+      const unlocked = DEV_MODE || (rec[prevKey] || 0) > 0;
+      if (!unlocked) break;
+      const extraObjs = i, extraDraws = Math.ceil(i/2), lieutenants = Math.min(Math.floor(i/2), 5);
+      opts.push({ v:key, label:`Legendary +${i} (${extraObjs} extra obj, ${extraDraws} extra draw${extraDraws!==1?'s':''}, ${lieutenants} lieutenant${lieutenants!==1?'s':''})` });
+    }
+  }
+  sel.innerHTML = opts.map((o,i) => `<option value="${o.v}"${i===1?' selected':''}>${o.label}</option>`).join('');
+  // Show legacy panel if points available
+  const lp = getLegacyPoints();
+  if (lp > 0 || Object.keys(getBoons()).length > 0) {
+    document.getElementById('legacy-panel').style.display = 'block';
+    document.getElementById('lp-total').textContent = `(${lp} pts)`;
+    buildLegacyBoons();
+  }
+}
+
+const LEGACY_BOON_DEFS = [
+  { id:'extra-event',   cost:1, label:'Extra Event Card',         desc:'Start with 1 more event card in the player deck (if available).' },
+  { id:'gondor-troop',  cost:1, label:'+1 Gondor Reserve',        desc:'Add 1 Gondor troop to the reserve at game start.' },
+  { id:'elf-troop',     cost:1, label:'+1 Elven Reserve',         desc:'Add 1 Elven troop to the reserve at game start.' },
+  { id:'dwarf-troop',   cost:1, label:'+1 Dwarven Reserve',       desc:'Add 1 Dwarven troop to the reserve at game start.' },
+  { id:'rohan-troop',   cost:1, label:'+1 Rohirrim Reserve',      desc:'Add 1 Rohirrim troop to the reserve at game start.' },
+  { id:'shadow-troop',  cost:1, label:'+1 Shadow Reserve Removed', desc:'Remove 1 shadow troop from reserve at game start (less threat).' },
+  { id:'reshuffle',     cost:3, label:'Deck Reshuffle',            desc:'When player deck runs out, shuffle discard into new deck (once). Threat tracker does not advance during reshuffle.' },
+  { id:'haldir',        cost:3, label:'Haldir (Free Peoples Lt)',  desc:'When shadow reaches Helm\'s Deep, Haldir spawns with 2 Elven troops. Takes 1 action before player 1: recruits elves (up to 3) then attacks shadow troops.' },
+  { id:'extra-char',    cost:5, label:'+1 Character at Start',     desc:'Bring an extra character into the game. Selectable multiple times (up to 11).' },
+  { id:'start-token',   cost:3, label:'Starting Resource Token',   desc:'Each player starts with 1 resource token of choice. Selectable multiple times.' },
+  { id:'deploy-troop',  cost:3, label:'Deploy Friendly Troop',     desc:'At game start, deploy 1 friendly troop of choice to any haven, friendly troop, or character location.' },
+  { id:'more-hope',     cost:3, label:'+1 Starting/Max Hope',      desc:'Increase starting hope and maximum hope by 1.' },
+];
+
+function buildLegacyBoons() {
+  const lp = getLegacyPoints();
+  const boons = getBoons();
+  const el = document.getElementById('legacy-boons');
+  el.innerHTML = '';
+  for (const def of LEGACY_BOON_DEFS) {
+    const owned = boons[def.id] || 0;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:.82em';
+    const ownedLabel = owned > 0 ? ` <span style="color:#50c850">(×${owned})</span>` : '';
+    row.innerHTML = `<span style="flex:1;color:#c8a050">${def.label}${ownedLabel} <span style="color:#706050">${def.desc}</span></span>
+      <span style="color:#f0c040;width:28px;text-align:right">${def.cost}pt</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm';
+    btn.textContent = 'Buy';
+    btn.disabled = lp < def.cost;
+    btn.onclick = () => {
+      const cur = getLegacyPoints();
+      if (cur < def.cost) return;
+      localStorage.setItem(LP_KEY, String(cur - def.cost));
+      setBoon(def.id, (getBoons()[def.id] || 0) + 1);
+      buildDifficultySelect();
+    };
+    row.appendChild(btn);
+    el.appendChild(row);
+  }
+}
+
+// ── SAVE / LOAD ───────────────────────────────────────────────────────────────
+function saveGame() {
+  if (!G) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(G));
+  } catch(e) { console.warn('Save failed:', e); }
+}
+
+function promptLoadGame() {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (!raw) { alert('No saved game found.'); return; }
+  try {
+    G = JSON.parse(raw);
+    document.getElementById('setup').style.display = 'none';
+    document.getElementById('game').style.display = 'flex';
+    requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); render(); });
+  } catch(e) { alert('Failed to load save.'); }
+}
+
+function autoSave() { if (G && G.phase !== 'gameover') saveGame(); }
+
+// ── MAP PAN / ZOOM + PINCH ────────────────────────────────────────────────────
+const mapView = { zoom: 1, panX: 0, panY: 0 };
+let mapDrag = null;
+let isPanDrag = false;
+
+function applyMapTransform() {
+  const wrap = document.getElementById('map-wrap');
+  if (wrap) wrap.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.zoom})`;
+}
+
+function clampPan() {
+  const panel = document.getElementById('map-panel');
+  if (!panel) return;
+  const pw = panel.offsetWidth, ph = panel.offsetHeight;
+  const wrap = document.getElementById('map-wrap');
+  const ww = (wrap.offsetWidth || pw) * mapView.zoom;
+  const wh = (wrap.offsetHeight || ph) * mapView.zoom;
+  mapView.panX = Math.min(pw * 0.5, Math.max(pw - ww - pw * 0.5, mapView.panX));
+  mapView.panY = Math.min(ph * 0.5, Math.max(ph - wh - ph * 0.5, mapView.panY));
+}
+
+function zoomAtPoint(factor, cx, cy) {
+  const newZoom = Math.max(0.5, Math.min(8, mapView.zoom * factor));
+  const scale = newZoom / mapView.zoom;
+  mapView.panX = cx - scale * (cx - mapView.panX);
+  mapView.panY = cy - scale * (cy - mapView.panY);
+  mapView.zoom = newZoom;
+  clampPan();
+  applyMapTransform();
+}
+
+function initMapPanZoom() {
+  const panel = document.getElementById('map-panel');
+  if (!panel) return;
+
+  // ── Mouse wheel zoom ──
+  panel.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = panel.getBoundingClientRect();
+    zoomAtPoint(e.deltaY < 0 ? 1.12 : 1/1.12, e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+
+  // ── Mouse pan ──
+  panel.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    mapDrag = { sx: e.clientX, sy: e.clientY, px: mapView.panX, py: mapView.panY };
+    isPanDrag = false;
+    document.getElementById('map-wrap').classList.add('dragging');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!mapDrag) return;
+    const dx = e.clientX - mapDrag.sx, dy = e.clientY - mapDrag.sy;
+    if (!isPanDrag && Math.hypot(dx, dy) > 5) isPanDrag = true;
+    if (isPanDrag) { mapView.panX = mapDrag.px + dx; mapView.panY = mapDrag.py + dy; clampPan(); applyMapTransform(); }
+  });
+  window.addEventListener('mouseup', () => {
+    mapDrag = null;
+    document.getElementById('map-wrap')?.classList.remove('dragging');
+    // isPanDrag reset happens at next mousedown
+  });
+
+  // ── Double-click to reset zoom ──
+  panel.addEventListener('dblclick', e => {
+    // only reset if on background (not on a location circle)
+    if (e.target.closest('g[data-loc]') || e.target.closest('.char-g')) return;
+    mapView.zoom = 1; mapView.panX = 0; mapView.panY = 0;
+    applyMapTransform();
+  });
+
+  // ── Touch pan + pinch ──
+  let lastTouches = [];
+  panel.addEventListener('touchstart', e => {
+    lastTouches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
+    isPanDrag = false;
+    if (e.touches.length === 1) {
+      mapDrag = { sx: e.touches[0].clientX, sy: e.touches[0].clientY, px: mapView.panX, py: mapView.panY };
+    } else { mapDrag = null; }
+  }, { passive: true });
+
+  panel.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const touches = Array.from(e.touches);
+    if (touches.length === 2 && lastTouches.length >= 2) {
+      const prev = lastTouches.slice(0, 2), cur = touches.slice(0, 2);
+      const rect = panel.getBoundingClientRect();
+      const prevDist = Math.hypot(prev[0].x - prev[1].x, prev[0].y - prev[1].y);
+      const curDist  = Math.hypot(cur[0].clientX - cur[1].clientX, cur[0].clientY - cur[1].clientY);
+      const factor = prevDist > 0 ? curDist / prevDist : 1;
+      const midX = (cur[0].clientX + cur[1].clientX) / 2 - rect.left;
+      const midY = (cur[0].clientY + cur[1].clientY) / 2 - rect.top;
+      const prevMidX = (prev[0].x + prev[1].x) / 2 - rect.left;
+      const prevMidY = (prev[0].y + prev[1].y) / 2 - rect.top;
+      zoomAtPoint(factor, prevMidX, prevMidY);
+      mapView.panX += midX - prevMidX; mapView.panY += midY - prevMidY;
+      clampPan(); applyMapTransform();
+      isPanDrag = true;
+    } else if (touches.length === 1 && mapDrag) {
+      const dx = touches[0].clientX - mapDrag.sx, dy = touches[0].clientY - mapDrag.sy;
+      if (!isPanDrag && Math.hypot(dx, dy) > 8) isPanDrag = true;
+      if (isPanDrag) { mapView.panX = mapDrag.px + dx; mapView.panY = mapDrag.py + dy; clampPan(); applyMapTransform(); }
+    }
+    lastTouches = touches.map(t => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
+  }, { passive: false });
+
+  panel.addEventListener('touchend', e => {
+    lastTouches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY, id: t.identifier }));
+    if (e.touches.length === 0) { mapDrag = null; }
+  }, { passive: true });
+}
+
 // Resize SVG to exactly match the displayed image area (accounts for object-fit:contain letterboxing)
 function alignSvgToImage() {
   const img  = document.getElementById('map-img');
@@ -439,6 +685,14 @@ function alignSvgToImage() {
 }
 window.addEventListener('resize', () => { if (G) { alignSvgToImage(); render(); } });
 
+// Initialise UI on page load
+(function initSetupUI() {
+  buildDifficultySelect();
+  if (localStorage.getItem(SAVE_KEY)) {
+    document.getElementById('load-btn').style.display = 'inline-block';
+  }
+})();
+
 function startGame() {
   const n = parseInt(document.getElementById('num-players').value);
   const names = [], charAssignment = [];
@@ -456,7 +710,7 @@ function startGame() {
   newGame({ numPlayers:n, playerNames:names, difficulty:diff, charAssignment, cardPrefs });
   document.getElementById('setup').style.display = 'none';
   document.getElementById('game').style.display = 'flex';
-  requestAnimationFrame(() => { alignSvgToImage(); render(); });
+  requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); render(); autoSave(); });
 }
 
 // ── UI STATE ──────────────────────────────────────────────────────────────────
@@ -478,6 +732,7 @@ function resetUI() {
 // ── MAIN RENDER ───────────────────────────────────────────────────────────────
 function render() {
   if (!G) return;
+  autoSave();
   renderTopBar();
   renderCharList();
   renderTokens();
@@ -659,6 +914,18 @@ function renderActions() {
     });
   }
 
+  if (sc === 'legolas') {
+    const legolasPlayerIdx = G.players.findIndex(pl => pl.chars.includes('legolas'));
+    const p_leg = G.players[legolasPlayerIdx];
+    const hasStealth = (p_leg?.tokens?.stealth || 0) >= 1;
+    const targets = getSureShotTargets();
+    actions.push({
+      key:'sure-shot', label:'🏹 Sure Shot ★',
+      tip:'Spend 1 ★ to remove a shadow troop at Legolas\'s location or adjacent (not an action)',
+      ok: hasStealth && targets.length > 0,
+    });
+  }
+
   // Objective-specific action buttons
   const p_act = G.players[G.currentPlayer];
   const frecasObj = G.objectives?.find(o => o.id === 'frecas-heirs' && !o.done);
@@ -667,6 +934,24 @@ function renderActions() {
     actions.push({ key:'capture-dunland', label:"⚔ Freca's Heirs",
       tip:"Spend 3⚔ or 3♥ to make Dunland a haven (Freca's Heirs objective)",
       ok: canAct_ && (hasV || hasF) });
+  }
+  if (sc === 'aragorn' && locId === 'edoras') {
+    const oathObj = G.objectives?.find(o => o.id === 'oathbreakers-duty' && !o.done && !o.aragornCalledOaths);
+    if (oathObj) {
+      actions.push({ key:'call-oathbreakers', label:'⚔ Call Oathbreakers',
+        tip:'Free travel Edoras→Erech (+2 shadow to Pelargir, Umbar shadow moves to Pelargir, add ≤3 Gondor to Erech)',
+        ok: canAct_ });
+    }
+  }
+  const osgObj = G.objectives?.find(o => o.id === 'secure-osgiliath' && !o.done);
+  if (osgObj && sc === 'faramir' && locId === 'osgiliath') {
+    const ls_osg = G.locState['osgiliath'];
+    const totalF_osg = totalFriendlyAt('osgiliath');
+    const hasV = (p_act.tokens.valor || 0) >= 3;
+    const hasRS = (p_act.tokens.resistance || 0) >= 2 && (p_act.tokens.stealth || 0) >= 1;
+    actions.push({ key:'secure-osgiliath', label:'⚔ Secure Osgiliath',
+      tip:'Spend 3⚔ or 2◎+1★ to make Osgiliath a haven (Faramir, no shadow troops, ≥1 friendly)',
+      ok: canAct_ && ls_osg.shadowTroops === 0 && totalF_osg > 0 && (hasV || hasRS) });
   }
   const theodenObj = G.objectives?.find(o => o.id === 'theodens-mind' && !o.done);
   if (theodenObj && locId === 'edoras') {
@@ -709,11 +994,56 @@ function renderObjectives() {
     const hint = obj.done ? 'Completed!' : obj.completeIf.slice(0, 55) + (obj.completeIf.length > 55 ? '…' : '');
     div.innerHTML = `<div class="obj-name">${obj.done ? '✅' : '○'} ${obj.name}</div><div class="obj-hint">${hint}</div>`;
     div.title = `To complete: ${obj.completeIf}\nReward: ${obj.whenCompleted || ''}`;
+    // Extra state display for hobbits-pledge
+    if (obj.id === 'hobbits-pledge' && !obj.done && obj.state?.categoriesFilled?.length > 0) {
+      const cats = obj.state.categoriesFilled;
+      const catEl = document.createElement('div');
+      catEl.style.cssText = 'font-size:.75em;color:#50c850;margin-top:2px';
+      catEl.textContent = `♥ filled: ${cats.join(', ')}`;
+      div.appendChild(catEl);
+    }
+    if (obj.id === 'shieldmaiden' && !obj.done) {
+      const kills = G.nazgulDeaths || 0;
+      const kEl = document.createElement('div');
+      kEl.style.cssText = 'font-size:.75em;color:#c8a050;margin-top:2px';
+      kEl.textContent = `Éowyn Nazgûl kills: ${kills}/2`;
+      div.appendChild(kEl);
+    }
+    if (obj.id === 'oathbreakers-duty' && !obj.done) {
+      const called = obj.aragornCalledOaths;
+      const oEl = document.createElement('div');
+      oEl.style.cssText = `font-size:.75em;color:${called?'#50c850':'#888'};margin-top:2px`;
+      oEl.textContent = called ? '✓ Aragorn has called the Dead — clear Gondor to complete' : '○ Aragorn must ride from Edoras to Erech';
+      div.appendChild(oEl);
+    }
+    if (obj.id === 'ride-with-eored' && !obj.done) {
+      const slots = obj.slotsFilled || {};
+      const filled = Object.keys(slots);
+      const all7 = ['Rohan','Misty Mountains','Mirkwood','Gondor','Rhovanion','Enedwaith','Ithilien'];
+      const eEl = document.createElement('div');
+      eEl.style.cssText = 'font-size:.72em;color:#c8a050;margin-top:2px;line-height:1.4';
+      eEl.innerHTML = all7.map(s => `<span style="color:${slots[s]?'#50c850':'#555'}">${slots[s]?'✓':'○'} ${s}</span>`).join(' ');
+      div.appendChild(eEl);
+    }
+    if (obj.id === 'that-makes-six' && !obj.done) {
+      const held = obj.heldTroops || 0;
+      const tEl = document.createElement('div');
+      tEl.style.cssText = 'font-size:.75em;color:#60d090;margin-top:2px';
+      tEl.textContent = `🏹 Troops on card: ${held}/6`;
+      div.appendChild(tEl);
+    }
     div.onclick = () => {
-      if (obj.done) { showModal(obj.name, '✅ Already completed!<br>' + (obj.whenCompleted||''), [{label:'Close',action:closeModal}]); return; }
-      const btns = [{ label:'Close', action:closeModal }];
+      if (obj.done) { showModal(obj.name, '✅ Already completed!<br>' + (obj.whenCompleted||'')); return; }
+      const btns = [];
       if (!obj.done && UI.selectedChar && !obj.required) {
-        btns.unshift({ label:`Complete (${CHARS[UI.selectedChar]?.name})`, action:()=>{ closeModal(); const r=actionCompleteObjective(UI.selectedChar,obj.id); render(); if(r?.error) showModal('Cannot complete',r.error); }});
+        btns.unshift({ label:`Complete (${CHARS[UI.selectedChar]?.name})`, action:()=>{
+          closeModal();
+          const r = actionCompleteObjective(UI.selectedChar, obj.id);
+          render();
+          if (r?.error) { showModal('Cannot complete', r.error); return; }
+          if (r?.balrogRoll) showBalrogResolutionModal(r.balrogRoll);
+          if (r?.sheloblRoll) showShеlobModal(r.sheloblRoll, r.gollumPenalty || 0);
+        }});
       }
       showModal(obj.name,
         `<strong>To complete:</strong><br>${obj.completeIf}<br><br><strong>Reward:</strong><br>${obj.whenCompleted||'—'}`+
@@ -759,14 +1089,19 @@ function buildBLMultiMap() {
   return m;
 }
 
-// Returns map: canonicalKey+':'+blId → perpendicular offset value in SVG units
+// Returns map: canonicalKey+':'+color → perpendicular offset value in SVG units
+// Same-color lines on a segment share one offset (deduplication by color).
 function buildSegmentOffsets(blMultiMap) {
   const STEP = 0.85;
   const offsets = {};
   for (const [k, bls] of Object.entries(blMultiMap)) {
-    const n = bls.length;
-    bls.forEach((bl, idx) => {
-      offsets[k + ':' + bl.id] = (idx - (n - 1) / 2) * STEP;
+    const uniqueColors = [];
+    for (const bl of bls) {
+      if (!uniqueColors.includes(bl.color)) uniqueColors.push(bl.color);
+    }
+    const n = uniqueColors.length;
+    uniqueColors.forEach((color, idx) => {
+      offsets[k + ':' + color] = (idx - (n - 1) / 2) * STEP;
     });
   }
   return offsets;
@@ -795,8 +1130,11 @@ function renderConnections() {
     const isSpecial = conn.type === 'special';
 
     if (bls.length > 0) {
+      const drawnColors = new Set();
       for (const bl of bls) {
-        const off = segOffsets[k + ':' + bl.id] || 0;
+        if (drawnColors.has(bl.color)) continue;
+        drawnColors.add(bl.color);
+        const off = segOffsets[k + ':' + bl.color] || 0;
         const s = offsetSeg(a.x, a.y, b.x, b.y, conn.a, conn.b, off);
         layer.appendChild(svgEl('line', {
           x1:s.x1, y1:s.y1, x2:s.x2, y2:s.y2,
@@ -828,7 +1166,6 @@ function renderConnections() {
 const BL_ARROW_IDS = {
   green:'arrowhead-green', 'green4':'arrowhead-green',
   orange:'arrowhead', 'orange-b':'arrowhead', 'orange-c':'arrowhead', 'orange-d':'arrowhead', 'orange-e':'arrowhead', 'orange-f':'arrowhead',
-  red:'arrowhead-red',
   purple:'arrowhead-purple', 'purple-b':'arrowhead-purple', 'purple-c':'arrowhead-purple',
   yellow:'arrowhead-yellow', 'yellow-b':'arrowhead-yellow', 'yellow-c':'arrowhead-yellow', 'yellow-d':'arrowhead-yellow', 'yellow-e':'arrowhead-yellow',
   pink:'arrowhead-pink', 'pink-b':'arrowhead-pink', 'pink-c':'arrowhead-pink',
@@ -841,6 +1178,7 @@ function renderBattleLines() {
   layer.innerHTML = '';
   const blMultiMap = buildBLMultiMap();
   const segOffsets = buildSegmentOffsets(blMultiMap);
+  const drawnSegColors = new Set();
 
   for (const bl of BATTLE_LINES) {
     for (let i = 0; i < bl.locs.length - 1; i++) {
@@ -848,9 +1186,11 @@ function renderBattleLines() {
       const a = LOCS[locA], b = LOCS[locB];
       if (!a || !b) continue;
       const k = segKey(locA, locB);
-      const off = segOffsets[k + ':' + bl.id] || 0;
+      const drawnKey = k + ':' + bl.color;
+      if (drawnSegColors.has(drawnKey)) continue;
+      drawnSegColors.add(drawnKey);
+      const off = segOffsets[k + ':' + bl.color] || 0;
       const s = offsetSeg(a.x, a.y, b.x, b.y, locA, locB, off);
-      // Shorten the line slightly at destination to not overlap with the arrowhead circle
       const dx = s.x2 - s.x1, dy = s.y2 - s.y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
       const line = svgEl('line', {
         x1: s.x1, y1: s.y1,
@@ -1289,9 +1629,49 @@ function clickAction(action) {
     resetUI(); render();
     if (res?.rolls) showDiceResult('Battle Roll', res.rolls, 'battle');
   } else if (action === 'capture') {
-    const res = actionCapture(sc);
-    resetUI(); render();
-    if (res?.error) showModal('Cannot Capture', res.error);
+    const doCapture = (payWith) => {
+      const res = actionCapture(sc, payWith);
+      resetUI(); render();
+      if (res?.error) { showModal('Cannot Capture', res.error); return; }
+      if (res?.infiltrateCards) showInfiltrateCardsModal(res.infiltrateCards, res.deckSize);
+    };
+    const cs2 = G.charState[sc];
+    const loc2 = cs2?.location;
+    const p2 = G.players[G.currentPlayer];
+    const cost2 = (sc === 'gimli') ? 2 : 3;
+
+    const infiltrateActive = loc2 === 'minas-morgul' &&
+      G.objectives?.some(o => o.id === 'infiltrate-minas-morgul' && !o.done);
+    const layBareActive = loc2 === 'dol-guldur' && sc === 'galadriel' &&
+      G.objectives?.some(o => o.id === 'lay-bare-pits' && !o.done);
+
+    if (infiltrateActive) {
+      const hasValor = (p2.tokens.valor || 0) >= cost2;
+      const hasStealth = (p2.tokens.stealth || 0) >= cost2;
+      if (hasValor && hasStealth) {
+        showModal('Infiltrate Minas Morgul', `Pay to capture:<br>You have ${p2.tokens.valor} ⚔ Valor and ${p2.tokens.stealth} ★ Stealth`, [
+          { label: `${cost2} ⚔ Valor`,   action: () => { closeModal(); doCapture('valor'); } },
+          { label: `${cost2} ★ Stealth`, action: () => { closeModal(); doCapture('stealth'); } },
+        ]);
+      } else {
+        doCapture(hasStealth ? 'stealth' : 'valor');
+      }
+    } else if (layBareActive) {
+      const hasValor3 = (p2.tokens.valor || 0) >= 3;
+      const hasAlt = (p2.tokens.resistance || 0) >= 2 && (p2.tokens.valor || 0) >= 1;
+      if (hasValor3 && hasAlt) {
+        showModal('Lay Bare the Pits', `Pay to capture Dol Guldur:<br>You have ${p2.tokens.valor} ⚔ and ${p2.tokens.resistance} ◎`, [
+          { label: '3 ⚔ Valor',            action: () => { closeModal(); doCapture('valor'); } },
+          { label: '2 ◎ Resistance + 1 ⚔', action: () => { closeModal(); doCapture('resistance-valor'); } },
+        ]);
+      } else if (hasAlt && !hasValor3) {
+        doCapture('resistance-valor');
+      } else {
+        doCapture('valor');
+      }
+    } else {
+      doCapture('valor');
+    }
   } else if (action === 'destroy-ring') {
     if (confirm('Attempt to Destroy the One Ring? You need 5 symbol tokens.')) {
       const res = actionDestroyRing();
@@ -1306,6 +1686,30 @@ function clickAction(action) {
     render();
     if (res?.ok) showPickFromDiscardModal(res.matches, 'Wisdom of the Eldar — choose a ◎ card');
     else if (res?.error) showModal('Wisdom of the Eldar', res.error);
+  } else if (action === 'call-oathbreakers') {
+    const res = actionCallOathbreakers();
+    resetUI(); render();
+    if (res?.error) showModal('Cannot Call Oathbreakers', res.error);
+  } else if (action === 'secure-osgiliath') {
+    const p_osg = G.players[G.currentPlayer];
+    const hasV = (p_osg.tokens.valor || 0) >= 3;
+    const hasRS = (p_osg.tokens.resistance || 0) >= 2 && (p_osg.tokens.stealth || 0) >= 1;
+    const doSecure = (payWith) => {
+      const res = actionSecureOsgiliath(payWith);
+      resetUI(); render();
+      if (res?.error) showModal('Cannot Secure', res.error);
+    };
+    if (hasV && hasRS) {
+      showModal('Secure the Crossing of the Anduin',
+        `Pay to secure Osgiliath:<br>You have ${p_osg.tokens.valor} ⚔, ${p_osg.tokens.resistance} ◎, ${p_osg.tokens.stealth} ★`, [
+        { label:'3 ⚔ Valor',          action:() => { closeModal(); doSecure('valor'); } },
+        { label:'2 ◎ + 1 ★',         action:() => { closeModal(); doSecure('resistance-stealth'); } },
+      ]);
+    } else {
+      doSecure(hasRS ? 'resistance-stealth' : 'valor');
+    }
+  } else if (action === 'sure-shot') {
+    showSureShotModal();
   } else if (action === 'eomer-bonus-travel') {
     UI.pendingAction = 'eomer-bonus-travel';
     UI.validTargets = validTravelTargets('eomer');
@@ -1338,6 +1742,112 @@ function clickAction(action) {
   }
   render();
   // Check if Boromir's Honor was triggered during battle
+  if (G?.ui?.pendingSubdueUmbarReward) {
+    G.ui.pendingSubdueUmbarReward = false;
+    setTimeout(() => showSubdueUmbarRewardModal(), 250);
+  }
+  if (G?.ui?.pendingBringLightMirkwoodReward) {
+    G.ui.pendingBringLightMirkwoodReward = false;
+    setTimeout(() => showBringLightMirkwoodModal(), 250);
+  }
+  if (G?.ui?.pendingAvengeBalinReward) {
+    G.ui.pendingAvengeBalinReward = false;
+    setTimeout(() => showAvengeBalinModal(), 250);
+  }
+  if (G?.ui?.pendingOathbreakersErech !== undefined && G?.ui?.pendingOathbreakersErech !== null) {
+    const avail = G.ui.pendingOathbreakersErech;
+    G.ui.pendingOathbreakersErech = null;
+    let placed = 0;
+    function tryPlaceErech() {
+      const canPlace = (G.troopSupply?.gondor || 0) > 0 && placed < 3;
+      if (!canPlace) { render(); return; }
+      showModal('The Dead Awaken',
+        `Aragorn has called the Oathbreakers! Add a Gondor troop to Erech? (${placed}/3 placed, ${G.troopSupply.gondor || 0} in supply)`,
+        [
+          { label:'Add Gondor troop', action:() => {
+              G.locState['erech'].friendly.gondor = (G.locState['erech'].friendly.gondor || 0) + 1;
+              G.troopSupply.gondor--;
+              placed++;
+              closeModal();
+              tryPlaceErech();
+            }},
+          { label:'Stop placing', action:() => { closeModal(); render(); } },
+        ]);
+    }
+    setTimeout(tryPlaceErech, 250);
+  }
+  if (G?.ui?.pendingUnseatDenethorReward) {
+    G.ui.pendingUnseatDenethorReward = false;
+    setTimeout(() => {
+      const ls_mt = G.locState['minas-tirith'];
+      let placed = 0;
+      function tryPlace() {
+        const canPlace = (G.troopSupply?.gondor || 0) > 0 && placed < 3;
+        if (!canPlace) { render(); return; }
+        showModal('Unseat Denethor',
+          `Add a Gondor troop to Minas Tirith? (${placed}/3 placed, ${G.troopSupply.gondor || 0} in supply)`,
+          [
+            { label:'Add Gondor troop', action:() => {
+                ls_mt.friendly.gondor = (ls_mt.friendly.gondor || 0) + 1;
+                G.troopSupply.gondor--;
+                placed++;
+                closeModal();
+                tryPlace();
+              }},
+            { label:'Stop placing',    action:() => { closeModal(); render(); } },
+          ]);
+      }
+      tryPlace();
+    }, 250);
+  }
+  if (G?.ui?.pendingEoredSlot) {
+    const slot = G.ui.pendingEoredSlot;
+    G.ui.pendingEoredSlot = null;
+    const obj = G.objectives?.find(o => o.id === 'ride-with-eored');
+    const count = obj ? Object.keys(obj.slotsFilled || {}).length : 0;
+    setTimeout(() => showModal('Ride with the Éored',
+      `Éomer struck down shadow troops in <strong>${slot}</strong>!<br>` +
+      `Place a shadow troop on the ${slot} slot? (${count}/4 filled)`,
+      [
+        { label:`Fill ${slot} slot`, action:() => { closeModal(); actionEoredFillSlot(slot, true); render(); } },
+        { label:'Decline',           action:() => { closeModal(); actionEoredFillSlot(slot, false); } },
+      ]), 250);
+  }
+  if (G?.ui?.pendingSecureOsgiliathReward) {
+    G.ui.pendingSecureOsgiliathReward = false;
+    setTimeout(() => {
+      const ls = G.locState['osgiliath'];
+      const canAdd = (G.troopSupply?.gondor || 0) > 0;
+      showModal('Crossing of the Anduin Secured!',
+        `Osgiliath is now a haven (+2 hope already gained).<br><br>` +
+        `You may add 1 Gondor troop to Osgiliath.` +
+        `<br><em>Warning: if all friendly troops are driven out, the haven is lost (−3 hope) and cannot be reclaimed.</em>`,
+        canAdd
+          ? [
+              { label:'Add 1 Gondor troop', action:() => {
+                  closeModal();
+                  if ((G.troopSupply?.gondor || 0) > 0) {
+                    ls.friendly.gondor = (ls.friendly.gondor || 0) + 1;
+                    G.troopSupply.gondor--;
+                    addLog('Secure Osgiliath: +1 Gondor troop added to Osgiliath.');
+                  }
+                  render();
+                }},
+              { label:'Decline', action: closeModal },
+            ]
+          : [{ label:'OK', action: closeModal }]
+      );
+    }, 250);
+  }
+  if (G?.ui?.pendingLiftShadowValorOffer) {
+    G.ui.pendingLiftShadowValorOffer = false;
+    setTimeout(() => showModal('Lift Shadow from Dwarven Lands',
+      'Objective complete! You may gain 2 ⚔ Valor from the supply.',
+      [
+        { label:'Gain 2 ⚔ Valor', action:() => { closeModal(); actionLiftShadowTakeValor(true); render(); } },
+        { label:'Decline',        action:() => { closeModal(); actionLiftShadowTakeValor(false); } },
+      ]), 250);
+  }
   if (G?.ui?.boromirHonorPending) {
     const loc = G.ui.boromirHonorPending;
     G.ui.boromirHonorPending = null;
@@ -1552,6 +2062,7 @@ function showBoromirReplacementModal(candidates, playerIdx) {
 }
 
 function clickLocation(locId) {
+  if (isPanDrag) { isPanDrag = false; return; } // suppress click after a drag
   if (!UI.pendingAction) return;
 
   if (UI.pendingAction === 'travel') {
@@ -1737,6 +2248,496 @@ function showFullLocPicker(title, callback, filter) {
 }
 
 // ── MODAL HELPERS ─────────────────────────────────────────────────────────────
+function showSubdueUmbarRewardModal() {
+  const HLOCS = ['umbar', 'near-harad', 'harondor'];
+  const TROOP_TYPES = ['dwarven','elven','rohirrim','gondor'];
+  const counts = {};
+  HLOCS.forEach(id => { counts[id] = {}; TROOP_TYPES.forEach(t => { counts[id][t] = 0; }); });
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  function getTotalMoved() {
+    return HLOCS.reduce((s,id)=>s+TROOP_TYPES.reduce((s2,t)=>s2+counts[id][t],0),0);
+  }
+
+  function rebuild() {
+    overlay.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1208;border:1px solid #c8a050;border-radius:8px;padding:20px;max-width:420px;width:92%;max-height:85vh;overflow-y:auto';
+    box.innerHTML = '<h3 style="color:#c8a050;margin-bottom:10px">Subdue Umbar — Move Troops to Pelargir</h3>';
+
+    HLOCS.forEach(id => {
+      const ls = G.locState[id];
+      const locName = id.replace('near-harad','Near Harad').replace('harondor','Harondor').replace('umbar','Umbar');
+      const section = document.createElement('div');
+      section.style.cssText = 'margin-bottom:12px;padding:8px;border:1px solid #3a2810;border-radius:4px';
+      section.innerHTML = `<div style="font-size:.85em;font-weight:bold;color:#c8a050;margin-bottom:4px">${locName}</div>`;
+      TROOP_TYPES.forEach(t => {
+        const avail = ls.friendly[t] || 0;
+        if (avail === 0) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;margin:3px 0;font-size:.85em';
+        row.innerHTML = `<span style="flex:1">${t} (${avail} avail)</span>`;
+        for (let n = 0; n <= avail; n++) {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-sm' + (counts[id][t] === n ? ' btn-green' : '');
+          btn.style.cssText = 'min-width:28px;padding:2px 4px';
+          btn.textContent = n;
+          btn.onclick = () => { counts[id][t] = n; rebuild(); };
+          row.appendChild(btn);
+        }
+        section.appendChild(row);
+      });
+      box.appendChild(section);
+    });
+
+    const total = getTotalMoved();
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-green';
+    confirmBtn.style.cssText = 'width:100%;margin-top:8px';
+    confirmBtn.textContent = total > 0 ? `Move ${total} troop(s) to Pelargir` : 'Move nothing (skip)';
+    confirmBtn.onclick = () => {
+      overlay.remove();
+      actionSubdueUmbarMove(counts);
+      render();
+    };
+    box.appendChild(confirmBtn);
+    overlay.appendChild(box);
+  }
+
+  rebuild();
+  document.body.appendChild(overlay);
+}
+
+function showSureShotModal() {
+  const targets = getSureShotTargets();
+  const sixObj = G.objectives?.find(o => o.id === 'that-makes-six' && !o.done);
+  let selectedLoc = targets.length === 1 ? targets[0] : null;
+  let placeOnCard = false;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  function rebuild() {
+    overlay.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1208;border:1px solid #c8a050;border-radius:8px;padding:20px;max-width:360px;width:90%';
+    box.innerHTML = '<h3 style="color:#c8a050;margin-bottom:8px">🏹 Sure Shot</h3>' +
+      '<p style="font-size:.85em;margin-bottom:10px">Remove 1 shadow troop. Spend 1 ★ (Stealth).</p>' +
+      '<div style="font-size:.85em;font-weight:bold;margin-bottom:6px">Target:</div>';
+
+    const locRow = document.createElement('div');
+    locRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px';
+    targets.forEach(id => {
+      const ls = G.locState[id];
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm' + (selectedLoc === id ? ' btn-green' : '');
+      btn.textContent = `${LOCS[id]?.name || id} (${ls.shadowTroops} 🗡)`;
+      btn.onclick = () => { selectedLoc = id; rebuild(); };
+      locRow.appendChild(btn);
+    });
+    box.appendChild(locRow);
+
+    if (sixObj) {
+      const held = sixObj.heldTroops || 0;
+      const cardRow = document.createElement('div');
+      cardRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px;border:1px solid #3a2810;border-radius:4px;font-size:.85em;cursor:pointer';
+      cardRow.innerHTML = `<input type="checkbox" id="sure-shot-card" ${placeOnCard?'checked':''}> ` +
+        `<label for="sure-shot-card" style="cursor:pointer">Place on <em>That Makes Six</em> card (${held}/6)${held===5?' — completes now!':''}</label>`;
+      cardRow.onclick = () => { placeOnCard = !placeOnCard; rebuild(); };
+      box.appendChild(cardRow);
+    }
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-green';
+    confirmBtn.style.cssText = 'width:100%';
+    confirmBtn.disabled = !selectedLoc;
+    confirmBtn.textContent = selectedLoc
+      ? `Remove troop from ${LOCS[selectedLoc]?.name || selectedLoc}${placeOnCard ? ' → card' : ''}`
+      : 'Select a target first';
+    confirmBtn.onclick = () => {
+      if (!selectedLoc) return;
+      overlay.remove();
+      const res = actionSureShot(selectedLoc, placeOnCard);
+      render();
+      if (res?.error) showModal('Sure Shot', res.error);
+    };
+    box.appendChild(confirmBtn);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-sm';
+    cancelBtn.style.cssText = 'width:100%;margin-top:6px;color:#888;border-color:#444';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => overlay.remove();
+    box.appendChild(cancelBtn);
+
+    overlay.appendChild(box);
+  }
+
+  rebuild();
+  document.body.appendChild(overlay);
+}
+
+function showAvengeBalinModal() {
+  const moveCounts = {};
+  let takeValor = false;
+
+  // Collect all locations that have dwarven troops (except Moria itself)
+  const sources = Object.entries(G.locState)
+    .filter(([id, ls]) => id !== 'moria' && (ls.friendly?.dwarven || 0) > 0)
+    .map(([id, ls]) => ({ id, name: (typeof LOCS !== 'undefined' ? LOCS[id]?.name : id) || id, avail: ls.friendly.dwarven }));
+
+  sources.forEach(s => { moveCounts[s.id] = 0; });
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  function moriaTotalAfterMove() {
+    const base = G.locState['moria'].friendly.dwarven || 0;
+    return base + Object.values(moveCounts).reduce((s, n) => s + n, 0);
+  }
+
+  function rebuild() {
+    overlay.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1208;border:1px solid #c8a050;border-radius:8px;padding:20px;max-width:420px;width:92%;max-height:85vh;overflow-y:auto';
+    box.innerHTML = '<h3 style="color:#c8a050;margin-bottom:8px">Avenge Balin</h3>';
+
+    if (sources.length === 0) {
+      box.innerHTML += '<p style="font-size:.85em;color:#888;margin-bottom:12px">No Dwarven troops elsewhere to move.</p>';
+    } else {
+      box.innerHTML += '<p style="font-size:.85em;margin-bottom:10px">Move Dwarven troops from other locations to Moria:</p>';
+      sources.forEach(s => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:.85em';
+        row.innerHTML = `<span style="flex:1">${s.name} (${s.avail} avail)</span>`;
+        for (let n = 0; n <= s.avail; n++) {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-sm' + (moveCounts[s.id] === n ? ' btn-green' : '');
+          btn.style.cssText = 'min-width:26px;padding:2px 4px';
+          btn.textContent = n;
+          btn.onclick = () => { moveCounts[s.id] = n; rebuild(); };
+          row.appendChild(btn);
+        }
+        box.appendChild(row);
+      });
+    }
+
+    const newTotal = moriaTotalAfterMove();
+    const valorUnlocked = newTotal >= 4;
+    const totalEl = document.createElement('p');
+    totalEl.style.cssText = `margin:12px 0 6px;font-size:.9em;color:${valorUnlocked ? '#50c850' : '#c8a050'}`;
+    totalEl.textContent = `Moria Dwarven troops after move: ${newTotal}${valorUnlocked ? ' ≥ 4 — Valor offer unlocked!' : ' (need 4 for Valor bonus)'}`;
+    box.appendChild(totalEl);
+
+    if (valorUnlocked) {
+      const vRow = document.createElement('div');
+      vRow.style.cssText = 'display:flex;gap:8px;margin-bottom:12px';
+      const yesBtn = document.createElement('button');
+      yesBtn.className = 'btn btn-sm' + (takeValor ? ' btn-green' : '');
+      yesBtn.textContent = 'Gain 2 ⚔ Valor';
+      yesBtn.onclick = () => { takeValor = true; rebuild(); };
+      const noBtn = document.createElement('button');
+      noBtn.className = 'btn btn-sm' + (!takeValor ? ' btn-green' : '');
+      noBtn.textContent = 'Decline Valor';
+      noBtn.onclick = () => { takeValor = false; rebuild(); };
+      vRow.appendChild(yesBtn);
+      vRow.appendChild(noBtn);
+      box.appendChild(vRow);
+    } else {
+      takeValor = false;
+    }
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-green';
+    confirmBtn.style.cssText = 'width:100%';
+    const moved = Object.values(moveCounts).reduce((s, n) => s + n, 0);
+    confirmBtn.textContent = moved > 0 ? `Move ${moved} troop(s) to Moria${takeValor ? ' & gain 2 ⚔' : ''}` : `Confirm${takeValor ? ' & gain 2 ⚔' : ''}`;
+    confirmBtn.onclick = () => {
+      overlay.remove();
+      actionAvengeBalinMove(moveCounts, takeValor);
+      render();
+    };
+    box.appendChild(confirmBtn);
+    overlay.appendChild(box);
+  }
+
+  rebuild();
+  document.body.appendChild(overlay);
+}
+
+function showBringLightMirkwoodModal() {
+  const MLOCS = ['woodland-realm', 'old-forest-road', 'southern-mirkwood'];
+  const locNames = { 'woodland-realm':'Woodland Realm', 'old-forest-road':'Old Forest Road', 'southern-mirkwood':'Southern Mirkwood' };
+  let targetLoc = null;
+  const moveCounts = {};
+  MLOCS.forEach(id => { moveCounts[id] = 0; });
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  function rebuild() {
+    overlay.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1208;border:1px solid #c8a050;border-radius:8px;padding:20px;max-width:400px;width:92%';
+    box.innerHTML = '<h3 style="color:#c8a050;margin-bottom:8px">Bring Light to Mirkwood</h3>' +
+      '<p style="font-size:.85em;margin-bottom:12px">Select a destination, then move Elven troops there from the other Mirkwood locations.</p>' +
+      '<div style="font-size:.85em;font-weight:bold;margin-bottom:6px">Destination:</div>';
+
+    // Target location selector
+    const locRow = document.createElement('div');
+    locRow.style.cssText = 'display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap';
+    MLOCS.forEach(id => {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm' + (targetLoc === id ? ' btn-green' : '');
+      const elven = G.locState[id]?.friendly?.elven || 0;
+      btn.textContent = `${locNames[id]} (${elven} elf)`;
+      btn.onclick = () => { targetLoc = id; MLOCS.forEach(l => { if (l !== id) moveCounts[l] = 0; }); rebuild(); };
+      locRow.appendChild(btn);
+    });
+    box.appendChild(locRow);
+
+    if (targetLoc) {
+      const srcHeader = document.createElement('div');
+      srcHeader.style.cssText = 'font-size:.85em;font-weight:bold;margin-bottom:6px';
+      srcHeader.textContent = 'Move from:';
+      box.appendChild(srcHeader);
+
+      MLOCS.filter(id => id !== targetLoc).forEach(fromId => {
+        const avail = G.locState[fromId]?.friendly?.elven || 0;
+        if (avail === 0) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:.85em';
+        row.innerHTML = `<span style="flex:1">${locNames[fromId]} (${avail})</span>`;
+        for (let n = 0; n <= avail; n++) {
+          const nb = document.createElement('button');
+          nb.className = 'btn btn-sm' + (moveCounts[fromId] === n ? ' btn-green' : '');
+          nb.style.cssText = 'min-width:26px;padding:2px 4px';
+          nb.textContent = n;
+          nb.onclick = () => { moveCounts[fromId] = n; rebuild(); };
+          row.appendChild(nb);
+        }
+        box.appendChild(row);
+      });
+    }
+
+    const total = Object.entries(moveCounts).filter(([id]) => id !== targetLoc).reduce((s,[,n])=>s+n,0);
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-green';
+    confirmBtn.style.cssText = 'width:100%;margin-top:10px';
+    confirmBtn.disabled = !targetLoc;
+    confirmBtn.textContent = targetLoc
+      ? (total > 0 ? `Move ${total} Elven troop(s) to ${locNames[targetLoc]}` : `Confirm (no troops moved)`)
+      : 'Select a destination first';
+    confirmBtn.onclick = () => {
+      if (!targetLoc) return;
+      overlay.remove();
+      actionBringLightMirkwoodMove(targetLoc, moveCounts);
+      render();
+    };
+    box.appendChild(confirmBtn);
+    overlay.appendChild(box);
+  }
+
+  rebuild();
+  document.body.appendChild(overlay);
+}
+
+function showInfiltrateCardsModal(topCards, deckSize) {
+  // topCards[0] = card that would be drawn next; topCards[1] = one below it
+  const labels = topCards.map((c, i) => {
+    const name = c?.type || JSON.stringify(c);
+    return `${i === 0 ? '1st' : '2nd'} card: <strong>${name}</strong>`;
+  });
+  let removeTop = false, removeSecond = false;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  function rebuild() {
+    overlay.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1208;border:1px solid #c8a050;border-radius:8px;padding:24px;max-width:380px;width:90%';
+    box.innerHTML = `<h3 style="color:#c8a050;margin-bottom:10px">Infiltrate Minas Morgul</h3>
+      <p style="font-size:.9em;margin-bottom:14px">Top of shadow deck (${deckSize} cards remaining). Toggle to remove from game:</p>`;
+
+    topCards.forEach((c, i) => {
+      if (!c) return;
+      const isRemoved = i === 0 ? removeTop : removeSecond;
+      const row = document.createElement('div');
+      row.style.cssText = `display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px;border-radius:4px;border:1px solid ${isRemoved?'#c04040':'#3a2810'};background:${isRemoved?'rgba(192,64,64,.15)':'transparent'};cursor:pointer`;
+      row.innerHTML = `<span style="flex:1;${isRemoved?'text-decoration:line-through;opacity:.5':''}">${labels[i]}</span>
+        <span style="color:${isRemoved?'#c04040':'#50c850'};font-size:.85em">${isRemoved?'🗑 Remove':'✓ Keep'}</span>`;
+      row.onclick = () => { if (i === 0) removeTop = !removeTop; else removeSecond = !removeSecond; rebuild(); };
+      box.appendChild(row);
+    });
+
+    const confirm = document.createElement('button');
+    confirm.className = 'btn btn-green';
+    confirm.style.cssText = 'margin-top:10px;width:100%';
+    const removedCount = (removeTop ? 1 : 0) + (removeSecond ? 1 : 0);
+    confirm.textContent = removedCount > 0 ? `Remove ${removedCount} card(s) & confirm` : 'Keep all & confirm';
+    confirm.onclick = () => {
+      overlay.remove();
+      actionInfiltrateResolve(removeTop, removeSecond);
+      render();
+    };
+    box.appendChild(confirm);
+    overlay.appendChild(box);
+  }
+
+  rebuild();
+  document.body.appendChild(overlay);
+}
+
+function showBalrogResolutionModal(rolls) {
+  const hopeLoss = { rout:0, exchange:2, overrun:1, nazgul:3 };
+  const faceLabel = { rout:'✦ Rout (0 hope)', exchange:'⚔ Exchange (−2 hope)', overrun:'☠ Overrun (−1 hope)', nazgul:'🗡 Nazgûl (−3 hope)' };
+  let ignoredIdx = -1;
+  const p = G.players[G.currentPlayer];
+  const maxR = p.tokens.resistance || 0;
+  const maxV = p.tokens.valor || 0;
+
+  function computeLoss(valorSpend) {
+    const active = rolls.filter((_,i) => i !== ignoredIdx);
+    const raw = active.reduce((s,r) => s + (hopeLoss[r]||0), 0);
+    return Math.max(0, raw - Math.min(valorSpend, maxV));
+  }
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  function rebuild(valorSpend) {
+    overlay.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1208;border:1px solid #c8a050;border-radius:8px;padding:24px;max-width:380px;width:90%';
+    box.innerHTML = `<h3 style="color:#c8a050;margin-bottom:12px">Confront the Balrog</h3>
+      <p style="margin-bottom:10px;font-size:.9em">Gandalf rolled:</p>`;
+    rolls.forEach((r, i) => {
+      const ignored = i === ignoredIdx;
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.style.cssText = `margin:3px;${ignored ? 'opacity:.4;text-decoration:line-through' : ''}`;
+      btn.textContent = faceLabel[r] || r;
+      if (maxR > 0 && ignoredIdx === -1 && !ignored) {
+        btn.onclick = () => { ignoredIdx = i; rebuild(valorSpend); };
+        btn.title = 'Spend 1 Resistance to ignore this die';
+      }
+      box.appendChild(btn);
+    });
+    if (ignoredIdx >= 0) {
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'btn btn-sm';
+      undoBtn.style.cssText = 'margin:3px;color:#c04040;border-color:#c04040';
+      undoBtn.textContent = 'Undo ignore';
+      undoBtn.onclick = () => { ignoredIdx = -1; rebuild(valorSpend); };
+      box.appendChild(undoBtn);
+    }
+    const lossNow = computeLoss(valorSpend);
+    box.innerHTML += `<p style="margin:14px 0 6px;color:#f0c040">Hope loss: <strong>${lossNow}</strong></p>`;
+    const valorRow = document.createElement('div');
+    valorRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:.9em';
+    valorRow.innerHTML = `<span>Spend Valor to reduce (have ${maxV}):</span>`;
+    for (let i = 0; i <= Math.min(maxV, computeLoss(0)); i++) {
+      const vb = document.createElement('button');
+      vb.className = 'btn btn-sm' + (i === valorSpend ? ' btn-green' : '');
+      vb.textContent = `${i}⚔`;
+      vb.onclick = () => rebuild(i);
+      valorRow.appendChild(vb);
+    }
+    box.appendChild(valorRow);
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-green';
+    confirmBtn.textContent = `Resolve (lose ${lossNow} hope)`;
+    confirmBtn.onclick = () => {
+      overlay.remove();
+      const finalLoss = computeLoss(valorSpend);
+      actionResolveBalrog(ignoredIdx >= 0 ? 1 : 0, valorSpend);
+      if (finalLoss > 0) loseHope(finalLoss, 'Balrog battle');
+      render();
+      showModal('Confront the Balrog', `Gandalf has fallen! He will return as Gandalf the White when the next Skies Darken card is drawn.`);
+    };
+    box.appendChild(confirmBtn);
+    overlay.appendChild(box);
+  }
+  rebuild(0);
+  document.body.appendChild(overlay);
+}
+
+function showShеlobModal(rolls, gollumPenalty) {
+  const hopeLoss = { rout:0, exchange:2, overrun:1, nazgul:3 };
+  const faceLabel = { rout:'✦ Rout (0)', exchange:'⚔ Exchange (−2)', overrun:'☠ Overrun (−1)', nazgul:'🗡 Nazgûl (−3)' };
+  const ignored = new Set();
+  let friendshipSpend = 0;
+  const p = G.players[G.currentPlayer];
+
+  function computeLoss() {
+    const diceLoss = rolls.reduce((s,r,i) => ignored.has(i) ? s : s + (hopeLoss[r]||0), 0);
+    return Math.max(0, diceLoss + gollumPenalty - friendshipSpend);
+  }
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  function rebuild() {
+    overlay.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1208;border:1px solid #c8a050;border-radius:8px;padding:22px;max-width:400px;width:92%';
+    box.innerHTML = `<h3 style="color:#c8a050;margin-bottom:10px">Shelob's Lair</h3>
+      <p style="font-size:.85em;margin-bottom:6px">Frodo's dice — click to ignore (costs 1 ⚔ each, have ${p.tokens.valor||0}):</p>`;
+
+    rolls.forEach((r, i) => {
+      const isIgnored = ignored.has(i);
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.style.cssText = `margin:3px;${isIgnored ? 'opacity:.35;text-decoration:line-through' : ''}`;
+      btn.textContent = faceLabel[r] || r;
+      const canToggle = isIgnored || ignored.size < (p.tokens.valor || 0);
+      if (canToggle) {
+        btn.onclick = () => { isIgnored ? ignored.delete(i) : ignored.add(i); rebuild(); };
+      }
+      box.appendChild(btn);
+    });
+
+    const diceLoss = rolls.reduce((s,r,i) => ignored.has(i) ? s : s + (hopeLoss[r]||0), 0);
+    box.innerHTML += `<p style="margin:12px 0 4px;font-size:.85em;color:#888">Dice hope loss: ${diceLoss} &nbsp;+&nbsp; Gollum penalty: ${gollumPenalty}</p>`;
+
+    const maxF = Math.min(p.tokens.friendship || 0, Math.max(0, diceLoss + gollumPenalty));
+    if (maxF > 0 || friendshipSpend > 0) {
+      const fRow = document.createElement('div');
+      fRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:.85em';
+      fRow.innerHTML = `<span>Spend ♥ to reduce (have ${p.tokens.friendship||0}):</span>`;
+      for (let n = 0; n <= Math.min(p.tokens.friendship||0, diceLoss + gollumPenalty); n++) {
+        const fb = document.createElement('button');
+        fb.className = 'btn btn-sm' + (friendshipSpend === n ? ' btn-green' : '');
+        fb.textContent = `${n}♥`;
+        fb.onclick = () => { friendshipSpend = n; rebuild(); };
+        fRow.appendChild(fb);
+      }
+      box.appendChild(fRow);
+    }
+
+    const finalLoss = computeLoss();
+    box.innerHTML += `<p style="color:#f0c040;margin-bottom:12px">Total hope loss: <strong>${finalLoss}</strong>${finalLoss === 0 ? ' 🌟 +1 bonus action!' : ''}</p>`;
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-green';
+    confirmBtn.style.cssText = 'width:100%';
+    confirmBtn.textContent = finalLoss > 0 ? `Resolve (lose ${finalLoss} hope)` : 'Resolve (no hope lost)';
+    confirmBtn.onclick = () => {
+      overlay.remove();
+      actionResolveShelob(ignored, friendshipSpend, rolls, gollumPenalty);
+      render();
+    };
+    box.appendChild(confirmBtn);
+    overlay.appendChild(box);
+  }
+
+  rebuild();
+  document.body.appendChild(overlay);
+}
+
 function showModal(title, content, btns) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-content').innerHTML = content;
