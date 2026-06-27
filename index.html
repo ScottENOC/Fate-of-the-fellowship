@@ -605,14 +605,27 @@ function promptLoadGame() {
     G = JSON.parse(raw);
     document.getElementById('setup').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
-    requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); });
+    requestAnimationFrame(() => {
+      alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render();
+      if (G?.roomCode) startCloudStream(G.roomCode);
+    });
   } catch(e) { alert('Failed to load save.'); }
 }
 
-function autoSave() { if (G && G.phase !== 'gameover') saveGame(); }
+let _cloudSaveTimer = null;
+function autoSave() {
+  if (!G || G.phase === 'gameover') return;
+  saveGame(); // always write localStorage immediately
+  if (G.roomCode) {
+    // debounce: send to Firebase 2s after last change
+    clearTimeout(_cloudSaveTimer);
+    _cloudSaveTimer = setTimeout(cloudSave, 2000);
+  }
+}
 
 // ── FIREBASE REST / CLOUD MULTIPLAYER ─────────────────────────────────────────
 const FIREBASE_DB = 'https://fate-of-the-fellowship-default-rtdb.asia-southeast1.firebasedatabase.app';
+let _cloudStream = null; // active SSE connection
 
 function showToast(msg, ms=2500) {
   const t = document.getElementById('toast');
@@ -624,14 +637,16 @@ function showToast(msg, ms=2500) {
 
 async function cloudSave() {
   if (!G?.roomCode) return;
+  G.savedAt = Date.now(); // stamp so other clients can detect newer version
   try {
     const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(G.roomCode)}.json`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: G, savedAt: Date.now() })
+      body: JSON.stringify({ state: G })
     });
     if (!res.ok) throw new Error(res.status);
-    showToast('☁ Synced to cloud');
+    document.getElementById('sync-btn').textContent = '☁ Synced';
+    setTimeout(() => { const b = document.getElementById('sync-btn'); if (b) b.textContent = '☁ Sync'; }, 1500);
   } catch(e) {
     console.warn('Cloud save failed:', e);
     showToast('⚠ Cloud sync failed — saved locally only');
@@ -648,6 +663,33 @@ async function cloudLoad(code) {
     console.warn('Cloud load failed:', e);
     return null;
   }
+}
+
+function startCloudStream(roomCode) {
+  stopCloudStream();
+  const url = `${FIREBASE_DB}/rooms/${encodeURIComponent(roomCode)}.json?stream=true`;
+  _cloudStream = new EventSource(url);
+  _cloudStream.addEventListener('put', e => {
+    try {
+      const payload = JSON.parse(e.data);
+      const incoming = payload?.data?.state;
+      // Only apply if it's actually newer than what we have locally
+      if (!incoming || !incoming.savedAt) return;
+      if (incoming.savedAt <= (G?.savedAt || 0)) return;
+      G = incoming;
+      saveGame(); // mirror to localStorage
+      render();
+      showToast('☁ Updated from cloud');
+    } catch(err) { /* ignore parse errors */ }
+  });
+  _cloudStream.onerror = () => {
+    // SSE auto-reconnects; just silently log
+    console.warn('Cloud stream error — will reconnect');
+  };
+}
+
+function stopCloudStream() {
+  if (_cloudStream) { _cloudStream.close(); _cloudStream = null; }
 }
 
 function genRoomCode() {
@@ -668,15 +710,18 @@ async function joinRoom() {
   G = state;
   document.getElementById('setup').style.display = 'none';
   document.getElementById('game').style.display = 'flex';
-  requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); });
+  requestAnimationFrame(() => {
+    alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render();
+    startCloudStream(code);
+  });
 }
 
 async function syncFromCloud() {
   if (!G?.roomCode) { showToast('No room — this is a local-only game.'); return; }
-  showToast('☁ Syncing…');
   const state = await cloudLoad(G.roomCode);
   if (!state) { showToast('⚠ Could not reach cloud.'); return; }
   G = state;
+  saveGame();
   render();
   showToast('☁ Synced from cloud!');
 }
@@ -872,7 +917,10 @@ function startGame() {
   G.roomCode = (document.getElementById('room-code')?.value || '').trim().toUpperCase() || null;
   document.getElementById('setup').style.display = 'none';
   document.getElementById('game').style.display = 'flex';
-  requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); autoSave(); if (G.roomCode) cloudSave(); });
+  requestAnimationFrame(() => {
+    alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); autoSave();
+    if (G.roomCode) { cloudSave(); startCloudStream(G.roomCode); }
+  });
 }
 
 // ── UI STATE ──────────────────────────────────────────────────────────────────
@@ -2377,8 +2425,6 @@ function clickPhaseBtn() {
     if (res?.drawn?.some(c=>c.type==='skies-darken')) {
       showModal('Skies Darken!', `Skies Darken card(s) drawn! Check log for effects.`, [{label:'Continue',action:()=>{ closeModal(); render(); }}]);
     }
-    // Cloud save at turn-end (after shadow phase completes the full cycle)
-    if (G.roomCode) cloudSave();
   }
 }
 
