@@ -4,7 +4,7 @@
 let G = null; // the live game state
 
 function newGame(cfg) {
-  const { numPlayers, playerNames, difficulty } = cfg;
+  const { numPlayers, playerNames, difficulty, boons = {} } = cfg;
   const plusMatch = difficulty.match(/^legendary\+(\d+)$/);
   const plusLevel = plusMatch ? parseInt(plusMatch[1]) : 0;
   const baseDiff = plusLevel > 0 ? 'legendary' : difficulty;
@@ -151,7 +151,7 @@ function newGame(cfg) {
       rohirrim: Math.max(0, 5 - (troopReserved.rohirrim || 0)),
       gondor:   Math.max(0, 5 - (troopReserved.gondor   || 0)),
     },
-    shadowSupply: 45 - 18 - 9, // approximate remaining after setup
+    shadowSupply: 45 - 18 - (9 + extraSetupDraws), // 45 total minus normal+extra setup draws
     playerDeck,
     playerDiscard: [],
     shadowDeck,
@@ -176,7 +176,20 @@ function newGame(cfg) {
     nazgulDeaths: 0,           // total Nazgûl kills by Éowyn (for Shieldmaiden objective)
     gandalfState: 'grey',      // 'grey' | 'dead' | 'awaiting-white' | 'white'
     shadowLieutenants: [],     // active lieutenant ids from legendary+
+    freeLtBoons: boons,        // which free lt boons are purchased (id → count)
+    freeLtState: {},           // per-lt state: { active, location }
   };
+  // Initialize free peoples lieutenant state
+  for (const lt of FREE_PEOPLES_LIEUTENANTS) {
+    G.freeLtState[lt.id] = { active: false, location: lt.spawnLoc };
+  }
+  // Activate immediate-spawn free LTs (those without a trigger)
+  for (const lt of FREE_PEOPLES_LIEUTENANTS) {
+    if (lt.spawnTrigger === null && (boons[lt.id] || 0) > 0) {
+      activateFreeLt(lt.id);
+    }
+  }
+
   // Spawn shadow lieutenants (1 per even + level, up to 5 defined)
   const numLieutenants = Math.min(Math.floor(plusLevel / 2), SHADOW_LIEUTENANTS.length);
   for (let i = 0; i < numLieutenants; i++) {
@@ -306,6 +319,7 @@ function applyBattleRolls(locId, rolls, charId) {
   const nazgulPresent = (G.nazgul[region] || 0) > 0;
   const isEowyn = charId === 'eowyn';
   const shadowBefore = ls.shadowTroops;
+  const friendlyBefore = totalFriendlyAt(locId);
   const hadRohirrim = (ls.friendly.rohirrim || 0) > 0;
   for (const r of rolls) {
     if (r === 'rout') {
@@ -328,6 +342,11 @@ function applyBattleRolls(locId, rolls, charId) {
         removeFriendlyTroop(locId, 2); addLog('  Nazgûl! 2 friendly troops lost.');
       }
     }
+  }
+  // Gothmog: Iron Discipline — +1 friendly casualty if shadow outnumbered friendly at battle start
+  if (G.shadowLieutenants.includes('gothmog') && shadowBefore > friendlyBefore && totalFriendlyAt(locId) > 0) {
+    removeFriendlyTroop(locId, 1);
+    addLog('  ⚔ Gothmog\'s Iron Discipline: +1 extra friendly casualty!');
   }
   checkHavenLost(locId);
   if (checkBoromirHonorTrigger(locId)) G.ui.boromirHonorPending = locId;
@@ -1279,6 +1298,108 @@ function actionLiftShadowTakeValor(take) {
   }
 }
 
+// ── FREE PEOPLES LIEUTENANTS ──────────────────────────────────────────────────
+
+function activateFreeLt(ltId) {
+  const lt = FREE_PEOPLES_LIEUTENANTS.find(l => l.id === ltId);
+  if (!lt || !G.freeLtState[ltId] || G.freeLtState[ltId].active) return;
+  G.freeLtState[ltId].active = true;
+  G.freeLtState[ltId].location = lt.spawnLoc;
+  const spawned = Math.min(lt.startTroops, G.troopSupply[lt.troopType]);
+  if (spawned > 0) {
+    G.locState[lt.spawnLoc].friendly[lt.troopType] += spawned;
+    G.troopSupply[lt.troopType] -= spawned;
+  }
+  addLog(`⭐ ${lt.name} arrives at ${LOCS[lt.spawnLoc].name} with ${spawned} ${lt.troopType} troops!`);
+}
+
+function checkFreeLtSpawnTriggers() {
+  if (!G.freeLtBoons) return;
+  for (const lt of FREE_PEOPLES_LIEUTENANTS) {
+    if (!lt.spawnTrigger) continue;
+    if (!(G.freeLtBoons[lt.id] > 0)) continue;
+    const state = G.freeLtState[lt.id];
+    if (!state || state.active) continue;
+    if (lt.spawnTrigger === 'shadow-at') {
+      const triggered = lt.allowedLocs.some(locId => (G.locState[locId]?.shadowTroops || 0) > 0);
+      if (triggered) activateFreeLt(lt.id);
+    }
+  }
+}
+
+function processFreeLts() {
+  for (const lt of FREE_PEOPLES_LIEUTENANTS) {
+    const state = G.freeLtState?.[lt.id];
+    if (!state?.active) continue;
+
+    let actions = 2;
+    while (actions > 0) {
+      const loc = state.location;
+      const ls = G.locState[loc];
+      const troopsHere = ls.friendly[lt.troopType] || 0;
+      const shadowHere = ls.shadowTroops || 0;
+
+      // Priority 1: Attack at current location (needs 2+ troops — won't attack alone)
+      if (shadowHere > 0 && troopsHere >= 2) {
+        ls.shadowTroops--;
+        G.shadowSupply++;
+        addLog(`⭐ ${lt.name} attacks at ${LOCS[loc].name}: 1 shadow troop removed.`);
+        checkHavenLost(loc);
+        actions--;
+        continue;
+      }
+
+      // Haldir special — Lórien's Arrow: attack at any other allowed location
+      if (lt.id === 'haldir' && troopsHere >= 2) {
+        let bowTarget = null;
+        for (const locId of lt.allowedLocs) {
+          if (locId !== loc && (G.locState[locId]?.shadowTroops || 0) > 0) {
+            bowTarget = locId;
+            break;
+          }
+        }
+        if (bowTarget) {
+          G.locState[bowTarget].shadowTroops--;
+          G.shadowSupply++;
+          addLog(`⭐ Haldir (Lórien's Arrow): 1 shadow troop removed at ${LOCS[bowTarget].name}.`);
+          checkHavenLost(bowTarget);
+          actions--;
+          continue;
+        }
+      }
+
+      // Priority 2: Recruit if below maxTroops at current location
+      if (troopsHere < lt.maxTroops && G.troopSupply[lt.troopType] > 0) {
+        ls.friendly[lt.troopType]++;
+        G.troopSupply[lt.troopType]--;
+        addLog(`⭐ ${lt.name} recruits 1 ${lt.troopType} troop at ${LOCS[loc].name}.`);
+        actions--;
+        continue;
+      }
+
+      // Priority 3: Move toward most-threatened allowed location
+      if (lt.allowedLocs.length > 1) {
+        let moveTo = null, maxThreat = -1;
+        for (const locId of lt.allowedLocs) {
+          if (locId === loc) continue;
+          const threat = G.locState[locId]?.shadowTroops || 0;
+          if (threat > maxThreat) { maxThreat = threat; moveTo = locId; }
+        }
+        if (moveTo && maxThreat > 0) {
+          state.location = moveTo;
+          addLog(`⭐ ${lt.name} moves to ${LOCS[moveTo].name}.`);
+          actions--;
+          continue;
+        }
+      }
+
+      // Nothing useful to do
+      addLog(`⭐ ${lt.name} stands watch at ${LOCS[loc].name}.`);
+      break;
+    }
+  }
+}
+
 function checkPassiveObjectives() {
   checkShieldmaidenComplete();
   checkRangersEriadorComplete();
@@ -1288,6 +1409,7 @@ function checkPassiveObjectives() {
   checkAvengeBalinComplete();
   checkLiftShadowDwarvenComplete();
   checkOathbreakersComplete();
+  checkFreeLtSpawnTriggers();
 }
 
 const HARADWAITH_LOCS = ['umbar', 'near-harad', 'harondor'];
@@ -1581,6 +1703,10 @@ function resolveSkiesDarken(card) {
 // ── DRAW SHADOW CARDS ─────────────────────────────────────────────────────────
 function drawShadowCards() {
   if (G.phase !== 'draw-shadow') return;
+  // Mouth of Sauron: Dark Emissary — demand tribute once per shadow phase
+  if (G.shadowLieutenants.includes('mouth-of-sauron')) {
+    G.ui.pendingMouthTribute = true;
+  }
   const drawn = [];
   for (let i = 0; i < G.threatRate; i++) {
     if (G.shadowDeck.length === 0) {
@@ -1619,6 +1745,12 @@ function resolveShadowCard(card) {
         G.locState[spawnId].shadowTroops++;
         G.shadowSupply--;
         addLog(`  +1 shadow troop at ${LOCS[spawnId].name}.`);
+        // Gothmog: Commander's Reinforcement — extra troop in Mordor-region locations
+        if (G.shadowLieutenants.includes('gothmog') && LOCS[spawnId]?.region === 'mordor' && G.shadowSupply > 0) {
+          G.locState[spawnId].shadowTroops++;
+          G.shadowSupply--;
+          addLog(`  ⚔ Gothmog's Reinforcement: +1 extra shadow troop at ${LOCS[spawnId].name}!`);
+        }
         const tf = totalFriendlyAt(spawnId);
         if (tf > 0 && G.locState[spawnId].isHaven) rollBattle(spawnId, 1, null);
         else checkHavenLost(spawnId);
@@ -2007,6 +2139,7 @@ function endTurn() {
   G.phase = 'actions';
   G.turn = makeTurn(G.players[G.currentPlayer].chars, G.players[G.currentPlayer].actionsPerChar);
   G.ui = { selectedChar: null, pendingAction: null, validTargets: [], ignoreNextOrder: G.ui.ignoreNextOrder, freeSearchThisTurn: false };
+  if (G.currentPlayer === 0) processFreeLts();
   addLog(`--- ${G.players[G.currentPlayer].name}'s turn ---`);
 }
 

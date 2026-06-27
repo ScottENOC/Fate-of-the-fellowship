@@ -31,6 +31,16 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 /* ── GAME LAYOUT ── */
 #game{display:none;flex:1;overflow:hidden;flex-direction:row}
 #map-panel{flex:1;position:relative;overflow:hidden;background:#0a0805;touch-action:none}
+#map-toggles{position:absolute;top:8px;right:8px;z-index:20;font-family:inherit}
+#map-toggles-btn{background:rgba(20,15,8,.85);border:1px solid #4a3820;color:#c8a050;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;padding:0}
+#map-toggles-btn:hover{border-color:#c8a050}
+#map-toggles-menu{display:none;position:absolute;top:32px;right:0;background:rgba(20,15,8,.97);border:1px solid #4a3820;border-radius:6px;padding:10px 14px;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,.7)}
+#map-toggles-menu.open{display:block}
+.toggle-label{color:#c8a050;font-size:.75em;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em}
+.toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;user-select:none;font-size:.82em;color:#c8b880}
+.toggle-row:last-child{margin-bottom:0}
+.toggle-row input[type=checkbox]{accent-color:#c8a050;width:14px;height:14px;cursor:pointer}
+.toggle-row:hover{color:#f0e0a0}
 #map-wrap{position:relative;width:100%;height:100%;transform-origin:0 0;cursor:grab;will-change:transform}
 #map-wrap.dragging{cursor:grabbing}
 #map-img{display:block;width:100%;height:100%;object-fit:contain;object-position:top left;user-select:none;-webkit-user-drag:none}
@@ -123,6 +133,13 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 .char-done .char-actions-left{color:#50a850}
 
 /* ── OBJECTIVES ── */
+.lt-card{border:1px solid #3a2810;border-radius:4px;padding:5px 8px;margin-bottom:4px;font-size:.78em}
+.lt-card .lt-name{font-weight:bold;margin-bottom:1px}
+.lt-card .lt-detail{color:#706050;font-size:.9em}
+.lt-card .lt-passive{color:#907850;font-size:.85em;margin-top:3px;border-top:1px solid #3a2810;padding-top:2px}
+.lt-card.shadow-lt{border-color:#602010}
+.lt-card.shadow-lt .lt-name{color:#cc4020}
+.lt-card.free-lt-pending{border-color:#3a5830;opacity:.6}
 .obj-card{border:1px solid #3a2810;border-radius:4px;padding:5px 8px;margin-bottom:4px;cursor:pointer;transition:all .15s}
 .obj-card:hover{border-color:#c8a050}
 .obj-card.done{border-color:#2a6030;opacity:.7}
@@ -182,7 +199,13 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
     <button class="btn" id="load-btn" onclick="promptLoadGame()" style="display:none">Load Saved Game</button>
   </div>
   <div id="legacy-panel" style="display:none;background:#1a1510;border:1px solid #4a3820;border-radius:8px;padding:16px 24px;width:460px">
-    <h3 style="color:#c8a050;margin-bottom:8px;font-size:1em;text-transform:uppercase;letter-spacing:1px">Legacy Points <span id="lp-total" style="color:#f0c040"></span></h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <h3 style="color:#c8a050;margin:0;font-size:1em;text-transform:uppercase;letter-spacing:1px">Legacy Points <span id="lp-total" style="color:#f0c040"></span></h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" style="color:#507050;border-color:#507050;font-size:.72em" onclick="grantTestLP(10)">+10 LP (test)</button>
+        <button class="btn btn-sm" style="color:#904030;border-color:#904030;font-size:.72em" onclick="resetLegacy()">⚠ Reset All</button>
+      </div>
+    </div>
     <div id="legacy-boons"></div>
   </div>
 </div>
@@ -210,6 +233,13 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <g id="locations-layer"></g>
         <g id="chars-layer"></g>
       </svg>
+      <!-- Map layer toggles -->
+      <div id="map-toggles">
+        <button id="map-toggles-btn" onclick="document.getElementById('map-toggles-menu').classList.toggle('open')" title="Toggle map layers">⚙</button>
+        <div id="map-toggles-menu">
+          <div class="toggle-label">Map Layers</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -257,6 +287,11 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <div class="section-title">Objectives</div>
         <div id="obj-list"></div>
       </div>
+      <!-- Lieutenants -->
+      <div id="lt-section" style="display:none">
+        <div class="section-title">Lieutenants</div>
+        <div id="lt-list"></div>
+      </div>
       <!-- Actions -->
       <div>
         <div class="section-title">Actions</div>
@@ -270,6 +305,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
     <div style="padding:6px 10px;border-top:1px solid #3a2810;display:flex;gap:6px">
       <button class="btn btn-sm" onclick="saveGame();showModal('Saved','Game saved to this device.')">💾 Save</button>
       <button class="btn btn-sm" style="color:#906040;border-color:#906040" onclick="if(confirm('Return to setup? Unsaved progress will be lost.'))location.reload()">↩ Menu</button>
+      <button class="btn btn-sm" style="color:#507050;border-color:#507050;margin-left:auto" onclick="devTools()">🔧</button>
     </div>
   </div>
 </div>
@@ -483,9 +519,9 @@ function buildDifficultySelect() {
     }
   }
   sel.innerHTML = opts.map((o,i) => `<option value="${o.v}"${i===1?' selected':''}>${o.label}</option>`).join('');
-  // Show legacy panel if points available
+  // Show legacy panel if points available (always in DEV_MODE)
   const lp = getLegacyPoints();
-  if (lp > 0 || Object.keys(getBoons()).length > 0) {
+  if (DEV_MODE || lp > 0 || Object.keys(getBoons()).length > 0) {
     document.getElementById('legacy-panel').style.display = 'block';
     document.getElementById('lp-total').textContent = `(${lp} pts)`;
     buildLegacyBoons();
@@ -500,7 +536,9 @@ const LEGACY_BOON_DEFS = [
   { id:'rohan-troop',   cost:1, label:'+1 Rohirrim Reserve',      desc:'Add 1 Rohirrim troop to the reserve at game start.' },
   { id:'shadow-troop',  cost:1, label:'+1 Shadow Reserve Removed', desc:'Remove 1 shadow troop from reserve at game start (less threat).' },
   { id:'reshuffle',     cost:3, label:'Deck Reshuffle',            desc:'When player deck runs out, shuffle discard into new deck (once). Threat tracker does not advance during reshuffle.' },
-  { id:'haldir',        cost:3, label:'Haldir (Free Peoples Lt)',  desc:'When shadow reaches Helm\'s Deep, Haldir spawns with 2 Elven troops. Takes 1 action before player 1: recruits elves (up to 3) then attacks shadow troops.' },
+  { id:'haldir',        cost:3, label:'Haldir of Lórien (Free Lt)',  desc:'When shadow reaches Helm\'s Deep or Fords of Isen, Haldir spawns with 2 elven troops. 2 actions/round: attack, recruit (up to 3), or move between those 2 locations. Special: Lórien\'s Arrow — can attack either location from either position.' },
+  { id:'cirdan',        cost:3, label:'Círdan the Shipwright (Free Lt)', desc:'Spawns at Grey Havens at game start with 2 elven troops. 2 actions/round: recruit (up to 3) or attack shadow at Grey Havens. Special: Ancient Ships — characters at Grey Havens or Pelargir may move 2 friendly troops to the other for free once per round.' },
+  { id:'dain',          cost:3, label:'Dáin Ironfoot (Free Lt)',    desc:'Spawns at Erebor at game start with 2 dwarven troops. 2 actions/round: attack, recruit (up to 3), or move between Erebor and Lake Town. Special: Ironfoot\'s Stand — dwarven troops at Erebor/Lake Town require 2 hits to remove.' },
   { id:'extra-char',    cost:5, label:'+1 Character at Start',     desc:'Bring an extra character into the game. Selectable multiple times (up to 11).' },
   { id:'start-token',   cost:3, label:'Starting Resource Token',   desc:'Each player starts with 1 resource token of choice. Selectable multiple times.' },
   { id:'deploy-troop',  cost:3, label:'Deploy Friendly Troop',     desc:'At game start, deploy 1 friendly troop of choice to any haven, friendly troop, or character location.' },
@@ -550,11 +588,46 @@ function promptLoadGame() {
     G = JSON.parse(raw);
     document.getElementById('setup').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
-    requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); render(); });
+    requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); });
   } catch(e) { alert('Failed to load save.'); }
 }
 
 function autoSave() { if (G && G.phase !== 'gameover') saveGame(); }
+
+function resetLegacy() {
+  if (!confirm('Reset ALL legacy points and purchased bonuses to zero? This cannot be undone.')) return;
+  localStorage.removeItem(LP_KEY);
+  localStorage.removeItem(BOONS_KEY);
+  document.getElementById('lp-total').textContent = '(0 pts)';
+  buildLegacyBoons();
+}
+
+function grantTestLP(n) {
+  const cur = getLegacyPoints();
+  localStorage.setItem(LP_KEY, cur + n);
+  document.getElementById('lp-total').textContent = `(${cur + n} pts)`;
+  buildLegacyBoons();
+}
+
+function devTools() {
+  if (!G) return;
+  const sl = G.shadowSupply;
+  const fl = Object.entries(G.troopSupply).map(([k,v])=>`${k}:${v}`).join(', ');
+  const drawn = G.plusLevel ? (9 + Math.ceil(G.plusLevel/2)) : 9;
+  const info = `<strong>Difficulty:</strong> ${G.difficulty}<br>` +
+    `<strong>Plus level:</strong> ${G.plusLevel ?? 0}<br>` +
+    `<strong>Shadow setup draws:</strong> ${drawn} (9 base + ${drawn-9} extra)<br>` +
+    `<strong>Shadow supply remaining:</strong> ${sl}<br>` +
+    `<strong>Friendly reserves:</strong> ${fl}<br>` +
+    `<strong>Shadow lieutenants:</strong> ${G.shadowLieutenants.join(', ') || 'none'}<br>` +
+    `<strong>Free lt boons:</strong> ${Object.entries(G.freeLtBoons||{}).filter(([,v])=>v>0).map(([k])=>k).join(', ')||'none'}`;
+  showModal('🔧 Dev Tools', info, [
+    { label:'⚔ Win Game', action:() => { closeModal(); endGame('players'); render(); } },
+    { label:'💀 Lose Game', action:() => { closeModal(); endGame('shadow'); render(); } },
+    { label:'+10 Hope', action:() => { closeModal(); G.hope = Math.min(G.maxHope, G.hope+10); render(); } },
+    { label:'+5 Shadow Supply', action:() => { closeModal(); G.shadowSupply += 5; render(); } },
+  ]);
+}
 
 // ── MAP PAN / ZOOM + PINCH ────────────────────────────────────────────────────
 const mapView = { zoom: 1, panX: 0, panY: 0 };
@@ -707,10 +780,11 @@ function startGame() {
   }
   const diff = document.getElementById('difficulty').value;
   const cardPrefs = getCardPrefs();
-  newGame({ numPlayers:n, playerNames:names, difficulty:diff, charAssignment, cardPrefs });
+  const boons = getBoons();
+  newGame({ numPlayers:n, playerNames:names, difficulty:diff, charAssignment, cardPrefs, boons });
   document.getElementById('setup').style.display = 'none';
   document.getElementById('game').style.display = 'flex';
-  requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); render(); autoSave(); });
+  requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); autoSave(); });
 }
 
 // ── UI STATE ──────────────────────────────────────────────────────────────────
@@ -720,6 +794,7 @@ let UI = {
   selectedCard: null,
   validTargets: [],
   needSearchDecision: false,
+  show: { routes: true, locations: true, nazgul: true, characters: true, troops: true },
 };
 
 function resetUI() {
@@ -730,6 +805,34 @@ function resetUI() {
 }
 
 // ── MAIN RENDER ───────────────────────────────────────────────────────────────
+function buildMapToggles() {
+  const menu = document.getElementById('map-toggles-menu');
+  menu.innerHTML = '<div class="toggle-label">Map Layers</div>';
+  const layers = [
+    { key:'routes',     label:'Routes & Battle Lines' },
+    { key:'locations',  label:'Locations & Troops' },
+    { key:'nazgul',     label:'Nazgûl' },
+    { key:'characters', label:'Characters' },
+  ];
+  layers.forEach(({ key, label }) => {
+    const row = document.createElement('label');
+    row.className = 'toggle-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = UI.show[key];
+    cb.onchange = () => { UI.show[key] = cb.checked; render(); };
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(label));
+    menu.appendChild(row);
+  });
+  // Close menu when clicking outside
+  document.addEventListener('click', function handler(e) {
+    if (!document.getElementById('map-toggles')?.contains(e.target)) {
+      document.getElementById('map-toggles-menu')?.classList.remove('open');
+    }
+  }, { capture: false });
+}
+
 function render() {
   if (!G) return;
   autoSave();
@@ -738,10 +841,18 @@ function render() {
   renderTokens();
   renderHand();
   renderObjectives();
+  renderLieutenants();
   renderActions();
   renderLog();
   renderMap();
   if (G.phase === 'gameover') showGameover();
+  // Mouth of Sauron tribute prompt
+  if (G?.ui?.pendingMouthTribute) {
+    G.ui.pendingMouthTribute = false;
+    setTimeout(() => showModal('💀 Mouth of Sauron — Dark Emissary',
+      'The herald demands tribute!<br><br>One player must <strong>spend 1 ★ (stealth)</strong> OR <strong>discard 1 card</strong> from hand.',
+      [{ label:'Tribute paid', action: closeModal }]), 200);
+  }
 }
 
 function renderTopBar() {
@@ -1065,12 +1176,79 @@ function renderLog() {
   }
 }
 
+function renderLieutenants() {
+  const section = document.getElementById('lt-section');
+  const list = document.getElementById('lt-list');
+  list.innerHTML = '';
+
+  // Free peoples lieutenants
+  const freeLts = FREE_PEOPLES_LIEUTENANTS.filter(lt => {
+    const hasBoon = (G.freeLtBoons?.[lt.id] || 0) > 0;
+    return hasBoon;
+  });
+
+  // Shadow lieutenants active in this game
+  const shadowLts = SHADOW_LIEUTENANTS.filter(lt => G.shadowLieutenants.includes(lt.id));
+
+  if (freeLts.length === 0 && shadowLts.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  for (const lt of freeLts) {
+    const state = G.freeLtState?.[lt.id];
+    const active = state?.active;
+    const div = document.createElement('div');
+    div.className = 'lt-card' + (active ? '' : ' free-lt-pending');
+
+    let troopsLabel = '';
+    if (active) {
+      const loc = state.location;
+      const t = G.locState[loc]?.friendly?.[lt.troopType] || 0;
+      troopsLabel = ` · ${t} ${lt.troopType} at ${LOCS[loc]?.name || loc}`;
+    }
+
+    div.innerHTML = `<div class="lt-name" style="color:${lt.color}">⭐ ${lt.name}${active ? '' : ' <em style="color:#556040;font-weight:normal">(awaiting trigger)</em>'}</div>` +
+      (active ? `<div class="lt-detail">${LOCS[state.location]?.name || state.location}${troopsLabel}</div>` : `<div class="lt-detail">Trigger: shadow troops reach ${lt.allowedLocs.map(l=>LOCS[l]?.name||l).join(' or ')}</div>`) +
+      `<div class="lt-passive"><strong>${lt.passiveName}:</strong> ${lt.passiveDesc}</div>`;
+
+    // Expand on click for full details
+    div.style.cursor = 'pointer';
+    div.onclick = () => showModal(lt.name, `<strong>Location:</strong> ${active ? (LOCS[state.location]?.name || state.location) : 'Not yet arrived'}<br>` +
+      `<strong>Allowed areas:</strong> ${lt.allowedLocs.map(l=>LOCS[l]?.name||l).join(', ')}<br>` +
+      `<strong>Troop type:</strong> ${lt.troopType} (max 3 at current location)<br>` +
+      `<strong>Acts:</strong> 2 actions at start of each round (attack → recruit → move)<br><br>` +
+      `<strong>🌟 ${lt.passiveName}:</strong> ${lt.passiveDesc}`);
+    list.appendChild(div);
+  }
+
+  for (const lt of shadowLts) {
+    const div = document.createElement('div');
+    div.className = 'lt-card shadow-lt';
+    div.style.cursor = 'pointer';
+    div.innerHTML = `<div class="lt-name">💀 ${lt.name}</div>` +
+      `<div class="lt-detail">${lt.spawnNote || ''}</div>`;
+    div.onclick = () => showModal(lt.name,
+      `<strong>Spawn:</strong> ${lt.spawnNote || '—'}<br><br><strong>Ability:</strong> ${lt.ability}`);
+    list.appendChild(div);
+  }
+}
+
 // ── MAP RENDERING ─────────────────────────────────────────────────────────────
 function renderMap() {
   renderConnections();
   renderBattleLines();
   renderLocations();
   renderCharMarkers();
+  // Apply layer visibility
+  const s = UI.show;
+  document.getElementById('connections-layer').style.display   = s.routes     ? '' : 'none';
+  document.getElementById('battle-lines-layer').style.display  = s.routes     ? '' : 'none';
+  document.getElementById('locations-layer').style.display     = s.locations  ? '' : 'none';
+  document.getElementById('chars-layer').style.display         = s.characters ? '' : 'none';
+  // Nazgûl markers are inside chars-layer; toggle their sub-group
+  document.querySelectorAll('.nazgul-marker').forEach(el => { el.style.display = s.nazgul ? '' : 'none'; });
 }
 
 // Returns sorted canonical key for any segment (so A|B == B|A)
@@ -1275,10 +1453,11 @@ const GOOD_TROOP_ORDER = [
   { key:'dwarven',  color:'#888888' },
 ];
 
-function renderTroopClock(g, loc, ls) {
+function renderTroopClock(parentG, loc, ls) {
   const OR = 2.15;  // orbit radius
   const DR = 0.44;  // dot radius
   const MAX = 5;    // max per side before overflow indicator
+  const g = svgEl('g', { class:'troop-clock' });
 
   // Shadow troops: positions 1, 2, 3... (clockwise)
   const sc = ls.shadowTroops;
@@ -1316,6 +1495,7 @@ function renderTroopClock(g, loc, ls) {
     t.textContent = '+' + (goodList.length - MAX);
     g.appendChild(t);
   }
+  parentG.appendChild(g);
 }
 
 function renderCharMarkers() {
@@ -1385,6 +1565,9 @@ const NAZ_CENTERS = {
 };
 
 function renderEyeAndNazgul(layer) {
+  const nazWrapper = svgEl('g', { class:'nazgul-marker' });
+  layer.appendChild(nazWrapper);
+  layer = nazWrapper;
   // Eye of Sauron — fiery eye shape at the active region
   const ec = EYE_CENTERS[G.eyeRegion];
   if (ec) {
