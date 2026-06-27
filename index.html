@@ -104,6 +104,44 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 .log-entry{font-size:.75em;color:#907040;padding:1px 0;border-bottom:1px solid #1a1510}
 .log-entry.log-new{color:#c8a050}
 
+/* ── MENU TOGGLE BUTTON (floats on map) ── */
+#menu-toggle-btn{position:absolute;bottom:10px;left:10px;z-index:20;background:rgba(20,15,8,.88);border:1px solid #4a3820;color:#c8a050;padding:5px 13px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:.78em;transition:all .15s}
+#menu-toggle-btn:hover{border-color:#c8a050;background:rgba(30,22,10,.97)}
+
+/* ── SIDEBAR HIDDEN STATE ── */
+#sidebar.menu-hidden{display:none}
+
+/* ── PORTRAIT / NARROW LAYOUT ── */
+@media (orientation:portrait){
+  #game{flex-direction:column}
+  #map-panel{flex:none;height:52vh}
+  #sidebar{width:100%;min-width:unset;height:48vh;border-left:none;border-top:2px solid #3a2810;flex-direction:column}
+  #sidebar.menu-hidden~*,#sidebar.menu-hidden{display:none}
+  #game:has(#sidebar.menu-hidden) #map-panel{height:100%;flex:1}
+  #log-area{height:80px}
+  #top-bar{padding:5px 10px;gap:3px}
+  .track-row{font-size:.78em}
+  .track-bar{height:9px}
+  #nazgul-row{font-size:.68em}
+  #supply-row{font-size:.65em}
+  .setup-card{width:calc(100vw - 32px);max-width:460px}
+  #toast{bottom:50vh}
+  #menu-toggle-btn{bottom:auto;top:8px;left:10px}
+}
+
+/* ── LOBBY SCREEN ── */
+#lobby{display:none;flex-direction:column;align-items:center;background:linear-gradient(160deg,#0e0c08 0%,#1a1208 100%);min-height:100vh;padding:24px 16px 40px;overflow-y:auto;gap:16px}
+#lobby h1{font-size:2.2em;color:#c8a050;text-shadow:0 0 20px #c8a05080;letter-spacing:2px;margin:0}
+.lobby-code{font-size:1.7em;color:#f0c040;letter-spacing:5px;font-weight:bold;font-family:monospace}
+.lobby-main{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;width:100%;max-width:960px}
+.lobby-player-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:5px;border:1px solid #3a2810;font-size:.85em}
+.lobby-player-row.is-me{border-color:#c8a050;background:#1e1a10}
+.lobby-char-card{border:2px solid #2a2010;border-radius:6px;padding:8px 10px;cursor:pointer;transition:all .15s;user-select:none;min-width:140px}
+.lobby-char-card:hover:not(.char-taken){border-color:#c8a050}
+.lobby-char-card.char-mine{background:rgba(200,160,80,.1)}
+.lobby-char-card.char-taken{opacity:.4;cursor:default}
+.lobby-char-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+@media(max-width:600px){.lobby-main{gap:10px}.lobby-char-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}}
 /* ── MAP NODES ── */
 .loc-circle{stroke-width:2;cursor:pointer;transition:all .1s}
 .loc-label{font-size:9px;fill:#e8d8b0;pointer-events:none;font-family:Palatino,serif;text-shadow:1px 1px 2px #000}
@@ -210,7 +248,8 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   </div>
   <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
     <button class="btn" onclick="startGame()">Begin the Quest</button>
-    <button class="btn" id="join-room-btn" onclick="joinRoom()">☁ Join Room</button>
+    <button class="btn" onclick="createRoom()">☁ Create Room</button>
+    <button class="btn" id="join-room-btn" onclick="joinLobbyFromSetup()">☁ Join Room</button>
     <button class="btn" id="load-btn" onclick="promptLoadGame()" style="display:none">Load Local Save</button>
   </div>
   <div id="legacy-panel" style="display:none;background:#1a1510;border:1px solid #4a3820;border-radius:8px;padding:16px 24px;width:460px">
@@ -225,9 +264,37 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   </div>
 </div>
 
+<!-- ── LOBBY SCREEN ─────────────────────────────────────────── -->
+<div id="lobby">
+  <h1>Fate of the Fellowship</h1>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center">
+    <span style="color:#907040;font-size:.9em;text-transform:uppercase;letter-spacing:1px">Room</span>
+    <span id="lobby-room-code" class="lobby-code"></span>
+    <button class="btn btn-sm" onclick="copyRoomCode()">Copy Code</button>
+  </div>
+  <p style="font-size:.8em;color:#706050;margin:0;text-align:center">Share this code with your family. Anyone can join from any device.</p>
+  <div class="lobby-main">
+    <div class="setup-card" style="min-width:250px;flex:1;max-width:360px">
+      <h3>Fellowship</h3>
+      <div id="lobby-player-list" style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px"></div>
+      <div id="lobby-status-msg" style="font-size:.78em;color:#907040;margin-bottom:10px;min-height:1.2em"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button id="lobby-ready-btn" class="btn btn-sm btn-green" onclick="toggleLobbyReady()">Mark Ready</button>
+        <button id="lobby-start-btn" class="btn btn-sm" onclick="startFromLobby()" style="display:none">⚔ Start Quest</button>
+        <button class="btn btn-sm btn-danger" onclick="leaveLobby()" style="margin-left:auto">← Leave</button>
+      </div>
+    </div>
+    <div class="setup-card" style="flex:2;min-width:260px">
+      <h3>Claim Characters <span style="font-size:.7em;font-weight:normal;color:#706050">— click to claim / click again to release</span></h3>
+      <div id="lobby-char-grid" class="lobby-char-grid"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── GAME SCREEN ─────────────────────────────────────────── -->
 <div id="game">
   <div id="map-panel">
+    <button id="menu-toggle-btn" onclick="toggleSidebar()">☰ Hide Menu</button>
     <div id="map-wrap">
       <img id="map-img" src="map.jpg" alt="Middle-earth map">
       <svg id="map-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="xMinYMin meet">
@@ -607,12 +674,19 @@ function promptLoadGame() {
     document.getElementById('game').style.display = 'flex';
     requestAnimationFrame(() => {
       alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render();
-      if (G?.roomCode) startCloudStream(G.roomCode);
+      if (G?.roomCode) { _lobbyRoomCode = G.roomCode; startCloudStream(G.roomCode); }
     });
   } catch(e) { alert('Failed to load save.'); }
 }
 
 let _cloudSaveTimer = null;
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const btn = document.getElementById('menu-toggle-btn');
+  const nowHidden = sidebar.classList.toggle('menu-hidden');
+  btn.textContent = nowHidden ? '☰ Show Menu' : '☰ Hide Menu';
+}
+
 function autoSave() {
   if (!G || G.phase === 'gameover') return;
   saveGame(); // always write localStorage immediately
@@ -625,7 +699,10 @@ function autoSave() {
 
 // ── FIREBASE REST / CLOUD MULTIPLAYER ─────────────────────────────────────────
 const FIREBASE_DB = 'https://fate-of-the-fellowship-default-rtdb.asia-southeast1.firebasedatabase.app';
-let _cloudStream = null; // active SSE connection
+let _cloudStream = null;
+let _lobbyStream = null;
+let _heartbeatTimer = null;
+let _lobbyRoomCode = null;
 
 function showToast(msg, ms=2500) {
   const t = document.getElementById('toast');
@@ -635,18 +712,34 @@ function showToast(msg, ms=2500) {
   t._timer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+// Player identity — persists across sessions
+function getPlayerId() {
+  let id = localStorage.getItem('mp-player-id');
+  if (!id) { id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); localStorage.setItem('mp-player-id', id); }
+  return id;
+}
+function getSetupName() {
+  return (document.getElementById('pname0')?.value || '').trim() || localStorage.getItem('mp-player-name') || 'Wanderer';
+}
+function myPlayerIdx() {
+  if (!G?.playerIds) return 0;
+  const idx = G.playerIds.indexOf(getPlayerId());
+  return idx >= 0 ? idx : 0;
+}
+
+// ── CLOUD SAVE / LOAD ───────────────────────────────────────────────────────
 async function cloudSave() {
   if (!G?.roomCode) return;
-  G.savedAt = Date.now(); // stamp so other clients can detect newer version
+  G.savedAt = Date.now();
   try {
-    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(G.roomCode)}.json`, {
+    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(G.roomCode)}/state.json`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: G })
+      body: JSON.stringify(G)
     });
     if (!res.ok) throw new Error(res.status);
-    document.getElementById('sync-btn').textContent = '☁ Synced';
-    setTimeout(() => { const b = document.getElementById('sync-btn'); if (b) b.textContent = '☁ Sync'; }, 1500);
+    const b = document.getElementById('sync-btn');
+    if (b) { b.textContent = '☁ Synced'; setTimeout(() => { b.textContent = '☁ Sync'; }, 1500); }
   } catch(e) {
     console.warn('Cloud save failed:', e);
     showToast('⚠ Cloud sync failed — saved locally only');
@@ -655,10 +748,9 @@ async function cloudSave() {
 
 async function cloudLoad(code) {
   try {
-    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}.json`);
+    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/state.json`);
     if (!res.ok) throw new Error(res.status);
-    const data = await res.json();
-    return data?.state ?? null;
+    return await res.json(); // G directly
   } catch(e) {
     console.warn('Cloud load failed:', e);
     return null;
@@ -667,63 +759,282 @@ async function cloudLoad(code) {
 
 function startCloudStream(roomCode) {
   stopCloudStream();
-  const url = `${FIREBASE_DB}/rooms/${encodeURIComponent(roomCode)}.json?stream=true`;
-  _cloudStream = new EventSource(url);
+  _cloudStream = new EventSource(`${FIREBASE_DB}/rooms/${encodeURIComponent(roomCode)}/state.json?stream=true`);
   _cloudStream.addEventListener('put', e => {
     try {
-      const payload = JSON.parse(e.data);
-      const incoming = payload?.data?.state;
-      // Only apply if it's actually newer than what we have locally
-      if (!incoming || !incoming.savedAt) return;
-      if (incoming.savedAt <= (G?.savedAt || 0)) return;
+      const incoming = JSON.parse(e.data)?.data;
+      if (!incoming?.savedAt || incoming.savedAt <= (G?.savedAt || 0)) return;
+      const myId = getPlayerId();
       G = incoming;
-      saveGame(); // mirror to localStorage
+      saveGame();
       render();
       showToast('☁ Updated from cloud');
-    } catch(err) { /* ignore parse errors */ }
+    } catch(err) {}
   });
-  _cloudStream.onerror = () => {
-    // SSE auto-reconnects; just silently log
-    console.warn('Cloud stream error — will reconnect');
-  };
+  _cloudStream.onerror = () => console.warn('Cloud stream reconnecting…');
 }
 
 function stopCloudStream() {
   if (_cloudStream) { _cloudStream.close(); _cloudStream = null; }
 }
 
-function genRoomCode() {
-  const words = ['SHIRE','RIVENDELL','LORIEN','ROHAN','GONDOR','MIRKWOOD','EREBOR','EDORAS'];
-  const w = words[Math.floor(Math.random() * words.length)];
-  const n = Math.floor(1000 + Math.random() * 9000);
-  document.getElementById('room-code').value = `${w}-${n}`;
+async function syncFromCloud() {
+  if (!G?.roomCode) { showToast('No room — local game.'); return; }
+  const state = await cloudLoad(G.roomCode);
+  if (!state) { showToast('⚠ Could not reach cloud.'); return; }
+  G = state; saveGame(); render(); showToast('☁ Synced from cloud!');
 }
 
-async function joinRoom() {
-  const code = (document.getElementById('room-code').value || '').trim().toUpperCase();
+// ── ROOM CODE HELPERS ───────────────────────────────────────────────────────
+function genRoomCodeStr() {
+  const words = ['SHIRE','RIVENDELL','LORIEN','ROHAN','GONDOR','MIRKWOOD','EREBOR','EDORAS'];
+  return words[Math.floor(Math.random() * words.length)] + '-' + Math.floor(1000 + Math.random() * 9000);
+}
+function genRoomCode() {
+  document.getElementById('room-code').value = genRoomCodeStr();
+}
+function copyRoomCode() {
+  const code = document.getElementById('lobby-room-code').textContent.trim();
+  navigator.clipboard?.writeText(code).then(() => showToast('Room code copied!')).catch(() => showToast(code));
+}
+
+// ── LOBBY ───────────────────────────────────────────────────────────────────
+async function createRoom() {
+  const myId = getPlayerId();
+  const myName = getSetupName();
+  localStorage.setItem('mp-player-name', myName);
+  const codeInput = (document.getElementById('room-code')?.value || '').trim().toUpperCase();
+  const code = codeInput || genRoomCodeStr();
+  const difficulty = document.getElementById('difficulty')?.value || 'standard';
+  const cardPrefs = getCardPrefs();
+  const boons = getBoons();
+  const lobby = {
+    host: myId,
+    status: 'waiting',
+    settings: { difficulty, cardPrefs, boons },
+    players: {
+      [myId]: { name: myName, chars: ['frodo-sam'], ready: false, lastSeen: Date.now(), joinedAt: Date.now() }
+    }
+  };
+  try {
+    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby.json`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lobby)
+    });
+    if (!res.ok) throw new Error(res.status);
+    enterLobby(code, lobby);
+  } catch(e) { alert('Could not create room. Check your internet connection.'); }
+}
+
+async function joinLobbyFromSetup() {
+  const code = (document.getElementById('room-code')?.value || '').trim().toUpperCase();
   if (!code) { alert('Enter a room code first.'); return; }
   const btn = document.getElementById('join-room-btn');
-  btn.textContent = 'Loading…'; btn.disabled = true;
-  const state = await cloudLoad(code);
-  btn.textContent = '☁ Join Room'; btn.disabled = false;
-  if (!state) { alert(`Room "${code}" not found. Check the code and try again.`); return; }
-  G = state;
+  btn.textContent = 'Joining…'; btn.disabled = true;
+  try {
+    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}.json`);
+    const roomData = await res.json();
+    btn.textContent = '☁ Join Room'; btn.disabled = false;
+    if (!roomData) { alert(`Room "${code}" not found.`); return; }
+    // Game already started — drop straight in
+    if (roomData.lobby?.status === 'playing' && roomData.state) {
+      G = roomData.state;
+      document.getElementById('setup').style.display = 'none';
+      document.getElementById('game').style.display = 'flex';
+      requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); startCloudStream(code); });
+      return;
+    }
+    // Add self to lobby if not already there
+    const myId = getPlayerId();
+    const myName = getSetupName();
+    localStorage.setItem('mp-player-name', myName);
+    if (!roomData.lobby.players?.[myId]) {
+      await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby/players/${myId}.json`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: myName, chars: [], ready: false, lastSeen: Date.now(), joinedAt: Date.now() })
+      });
+      roomData.lobby.players = roomData.lobby.players || {};
+      roomData.lobby.players[myId] = { name: myName, chars: [], ready: false, lastSeen: Date.now(), joinedAt: Date.now() };
+    }
+    enterLobby(code, roomData.lobby);
+  } catch(e) { btn.textContent = '☁ Join Room'; btn.disabled = false; alert('Could not reach cloud.'); }
+}
+
+function enterLobby(code, lobby) {
+  _lobbyRoomCode = code;
   document.getElementById('setup').style.display = 'none';
-  document.getElementById('game').style.display = 'flex';
-  requestAnimationFrame(() => {
-    alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render();
-    startCloudStream(code);
+  document.getElementById('lobby').style.display = 'flex';
+  document.getElementById('lobby-room-code').textContent = code;
+  renderLobby(lobby);
+  startLobbyStream(code);
+  startHeartbeat(code);
+}
+
+function renderLobby(lobby) {
+  const myId = getPlayerId();
+  const players = lobby.players || {};
+  const sorted = Object.entries(players).sort((a,b) => (a[1].joinedAt||0) - (b[1].joinedAt||0));
+  const now = Date.now();
+
+  // Player list
+  document.getElementById('lobby-player-list').innerHTML = sorted.map(([pid, p]) => {
+    const isMe = pid === myId;
+    const isHost = pid === lobby.host;
+    const offline = now - (p.lastSeen||0) > 90000;
+    const charNames = (p.chars||[]).map(cid => CHARS[cid]?.name || cid).join(', ') || '—';
+    return `<div class="lobby-player-row${isMe?' is-me':''}">
+      <span style="color:${isMe?'#f0c040':'#c8b880'};font-weight:${isMe?'bold':'normal'}">${p.name}${isHost?' 👑':''}</span>
+      ${p.ready?'<span style="color:#50a850;font-size:.75em">✓</span>':''}
+      ${offline?'<span style="color:#906050;font-size:.7em">(offline)</span>':''}
+      <span style="color:#706050;font-size:.72em;margin-left:auto;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${charNames}">${charNames}</span>
+    </div>`;
+  }).join('');
+
+  // Status
+  const total = sorted.length, ready = sorted.filter(([,p])=>p.ready).length;
+  document.getElementById('lobby-status-msg').textContent =
+    total <= 1 ? 'Waiting for others to join…' : `${ready} of ${total} ready`;
+
+  // My ready button label
+  const myReady = players[myId]?.ready;
+  const rb = document.getElementById('lobby-ready-btn');
+  rb.textContent = myReady ? '✓ Ready' : 'Mark Ready';
+  rb.style.opacity = myReady ? '1' : '.65';
+
+  // Start button (host only)
+  document.getElementById('lobby-start-btn').style.display = lobby.host === myId ? '' : 'none';
+
+  renderLobbyChars(lobby);
+}
+
+function hexToRgb(hex) {
+  return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)).join(',');
+}
+
+function renderLobbyChars(lobby) {
+  const myId = getPlayerId();
+  const players = lobby.players || {};
+  const claimed = {}; // charId → {pid, name}
+  Object.entries(players).forEach(([pid, p]) => (p.chars||[]).forEach(cid => { claimed[cid] = {pid, name: p.name}; }));
+
+  document.getElementById('lobby-char-grid').innerHTML = Object.entries(CHARS).map(([cid, ch]) => {
+    const cl = claimed[cid];
+    const isMe = cl?.pid === myId;
+    const isTaken = cl && !isMe;
+    return `<div class="lobby-char-card${isMe?' char-mine':''}${isTaken?' char-taken':''}"
+      style="border-color:${isMe?ch.color:(isTaken?'#2a2010':'#2a2010')};background:${isMe?`rgba(${hexToRgb(ch.color)},.12)`:'#0e0c08'}"
+      onclick="${isTaken?'':'lobbyToggleChar(\''+cid+'\')'}">
+      <div style="font-size:.82em;font-weight:bold;color:${isMe?ch.color:'#c8b880'}">${ch.name}</div>
+      <div style="font-size:.7em;color:${isMe?'#80c880':(isTaken?'#806050':'#504030')};margin-top:2px">
+        ${isMe?'✓ Yours':(cl?'Taken by '+cl.name:'Available')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function lobbyToggleChar(charId) {
+  const myId = getPlayerId();
+  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/chars.json`);
+  let chars = (await res.json()) || [];
+  chars = chars.includes(charId) ? chars.filter(c=>c!==charId) : [...chars, charId];
+  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/chars.json`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chars)
   });
 }
 
-async function syncFromCloud() {
-  if (!G?.roomCode) { showToast('No room — this is a local-only game.'); return; }
-  const state = await cloudLoad(G.roomCode);
-  if (!state) { showToast('⚠ Could not reach cloud.'); return; }
-  G = state;
-  saveGame();
-  render();
-  showToast('☁ Synced from cloud!');
+async function toggleLobbyReady() {
+  const myId = getPlayerId();
+  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/ready.json`);
+  const cur = await res.json();
+  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/ready.json`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(!cur)
+  });
+}
+
+async function startFromLobby() {
+  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby.json`);
+  const lobby = await res.json();
+  if (!lobby) return;
+  const sorted = Object.entries(lobby.players||{}).sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));
+  const names = sorted.map(([,p])=>p.name);
+  let charAssignment = sorted.map(([,p])=>p.chars||[]);
+  // Ensure frodo-sam is assigned
+  if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0] = ['frodo-sam',...charAssignment[0]];
+  charAssignment = charAssignment.map(cs=>cs.length?cs:['frodo-sam']);
+  const { difficulty, cardPrefs, boons } = lobby.settings || {};
+  newGame({ numPlayers: sorted.length, playerNames: names, charAssignment, difficulty, cardPrefs, boons });
+  G.roomCode = _lobbyRoomCode;
+  G.playerIds = sorted.map(([pid])=>pid);
+  G.savedAt = Date.now();
+  // Push game state + mark lobby as playing (two requests)
+  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/state.json`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(G)
+  });
+  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/status.json`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify('playing')
+  });
+  transitionLobbyToGame();
+}
+
+function transitionLobbyToGame() {
+  stopLobbyStream(); stopHeartbeat();
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('game').style.display = 'flex';
+  requestAnimationFrame(() => {
+    alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); autoSave();
+    if (G.roomCode) startCloudStream(G.roomCode);
+  });
+}
+
+async function leaveLobby() {
+  const myId = getPlayerId();
+  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}.json`, { method: 'DELETE' });
+  stopLobbyStream(); stopHeartbeat();
+  _lobbyRoomCode = null;
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('setup').style.display = 'flex';
+}
+
+function startLobbyStream(code) {
+  stopLobbyStream();
+  _lobbyStream = new EventSource(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby.json?stream=true`);
+  _lobbyStream.addEventListener('put', e => {
+    try {
+      const lobby = JSON.parse(e.data)?.data;
+      if (!lobby) return;
+      if (lobby.status === 'playing') {
+        // Game started — load state and transition
+        stopLobbyStream(); stopHeartbeat();
+        cloudLoad(code).then(state => {
+          if (!state) return;
+          G = state;
+          document.getElementById('lobby').style.display = 'none';
+          document.getElementById('game').style.display = 'flex';
+          requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); startCloudStream(code); });
+        });
+        return;
+      }
+      renderLobby(lobby);
+    } catch(err) {}
+  });
+  _lobbyStream.onerror = () => console.warn('Lobby stream reconnecting…');
+}
+
+function stopLobbyStream() {
+  if (_lobbyStream) { _lobbyStream.close(); _lobbyStream = null; }
+}
+
+function startHeartbeat(code) {
+  stopHeartbeat();
+  const myId = getPlayerId();
+  const ping = () => fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby/players/${myId}/lastSeen.json`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Date.now())
+  }).catch(()=>{});
+  ping();
+  _heartbeatTimer = setInterval(ping, 25000);
+}
+
+function stopHeartbeat() {
+  if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
 }
 
 function resetLegacy() {
@@ -1002,7 +1313,11 @@ function renderTopBar() {
   const phaseNames = { actions:'Actions', 'draw-player':'Draw Cards', 'draw-shadow':'Shadow', gameover:'Game Over' };
   document.getElementById('phase-label').textContent = `Phase: ${phaseNames[G.phase] || G.phase}`;
   const p = G.players[G.currentPlayer];
-  document.getElementById('player-label').textContent = p.name;
+  const myIdx = myPlayerIdx();
+  const isMyTurn = G.currentPlayer === myIdx;
+  document.getElementById('player-label').textContent =
+    G.playerIds ? (isMyTurn ? `✦ Your Turn — ${p.name}` : `${p.name}'s Turn`) : p.name;
+  document.getElementById('player-label').style.color = isMyTurn && G.playerIds ? '#f0c040' : '#c8a050';
   // Nazgûl summary
   const naz = Object.entries(G.nazgul).filter(([,v])=>v>0).map(([k,v])=>`${REGIONS[k]?.name||k}:${v}`).join(' · ');
   document.getElementById('nazgul-row').textContent = `Nazgûl: ${naz} | Eye: ${REGIONS[G.eyeRegion]?.name||G.eyeRegion}`;
