@@ -808,7 +808,7 @@ async function createRoom() {
     status: 'waiting',
     settings: { difficulty, cardPrefs, boons },
     players: {
-      [myId]: { name: myName, chars: ['frodo-sam'], ready: false, lastSeen: Date.now(), joinedAt: Date.now() }
+      [myId]: { name: myName, chars: ['frodo-sam', 'random'], ready: false, lastSeen: Date.now(), joinedAt: Date.now() }
     }
   };
   try {
@@ -845,10 +845,10 @@ async function joinLobbyFromSetup() {
     if (!roomData.lobby.players?.[myId]) {
       await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby/players/${myId}.json`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: myName, chars: [], ready: false, lastSeen: Date.now(), joinedAt: Date.now() })
+        body: JSON.stringify({ name: myName, chars: ['random','random'], ready: false, lastSeen: Date.now(), joinedAt: Date.now() })
       });
       roomData.lobby.players = roomData.lobby.players || {};
-      roomData.lobby.players[myId] = { name: myName, chars: [], ready: false, lastSeen: Date.now(), joinedAt: Date.now() };
+      roomData.lobby.players[myId] = { name: myName, chars: ['random','random'], ready: false, lastSeen: Date.now(), joinedAt: Date.now() };
     }
     enterLobby(code, roomData.lobby);
   } catch(e) { btn.textContent = '☁ Join Room'; btn.disabled = false; alert('Could not reach cloud.'); }
@@ -883,15 +883,16 @@ function renderLobby(lobby) {
   const sorted = lobbyPlayerOrder(players, lobby.host);
   const now = Date.now();
 
-  // Build set of all chars taken by others
+  // Chars explicitly claimed by others (excluding 'random' — that's not a claim)
   const takenByOthers = new Set(
-    Object.entries(players).filter(([pid])=>pid!==myId).flatMap(([,p])=>p.chars||[])
+    Object.entries(players).filter(([pid])=>pid!==myId)
+      .flatMap(([,p])=>(p.chars||[]).filter(c=>c!=='random'))
   );
 
-  // Preserve focus state so name input survives re-render
+  // Save focus so name input keeps caret on re-render
   const activeEl = document.activeElement;
   const editingName = activeEl?.classList.contains('lobby-name-input');
-  const savedNameVal = editingName ? activeEl.value : null;
+  const savedName = editingName ? activeEl.value : null;
   const savedCaret = editingName ? activeEl.selectionStart : null;
 
   const charEntries = Object.entries(CHARS);
@@ -900,22 +901,21 @@ function renderLobby(lobby) {
     const isMe = pid === myId;
     const isHost = pid === lobby.host;
     const offline = now - (p.lastSeen||0) > 90000;
-    const chars = p.chars || [];
+    // Always ensure 2 slots
+    const chars = [(p.chars||[])[0]||'random', (p.chars||[])[1]||'random'];
 
     if (isMe) {
-      // Build dropdown HTML — disable chars taken by others or already in my other slot
       const makeDropdown = (slot) => {
-        const cur = chars[slot] || '';
-        const other = chars[slot === 0 ? 1 : 0] || '';
-        const ph = slot === 0 ? '— Character 1 —' : '— Character 2 (optional) —';
+        const cur = chars[slot];
+        const otherSlot = chars[slot===0?1:0];
         const opts = charEntries.map(([cid, ch]) => {
-          const disabled = (takenByOthers.has(cid) || cid === other) && cid !== cur;
-          return `<option value="${cid}"${cid===cur?' selected':''}${disabled?' disabled':''}>
-            ${ch.name}${takenByOthers.has(cid)&&cid!==cur?' ✗':''}
-          </option>`;
+          // Disable if taken by someone else, or is my other real slot
+          const blocked = (takenByOthers.has(cid) || (cid===otherSlot && otherSlot!=='random')) && cid!==cur;
+          return `<option value="${cid}"${cid===cur?' selected':''}${blocked?' disabled':''}>` +
+            `${ch.name}${takenByOthers.has(cid)&&cid!==cur?' ✗':''}</option>`;
         }).join('');
-        return `<select class="lobby-char-sel" onchange="onLobbyCharChange(${slot},this.value)">
-          <option value="">${ph}</option>${opts}</select>`;
+        return `<select class="lobby-char-sel" onchange="onLobbyCharChange(${slot},this.value)">` +
+          `<option value="random"${'random'===cur?' selected':''}>↺ Random</option>${opts}</select>`;
       };
       return `<div class="lobby-player-row is-me">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -927,22 +927,21 @@ function renderLobby(lobby) {
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${makeDropdown(0)}${makeDropdown(1)}
-          <button class="btn btn-sm" onclick="lobbyRandom()" style="font-size:.72em;padding:3px 8px">↺ Random</button>
         </div>
       </div>`;
     } else {
-      const charDots = chars.map(cid =>
-        `<span class="lobby-char-dot" style="background:${CHARS[cid]?.color||'#888'}"></span><span style="font-size:.78em;color:#c8b880">${CHARS[cid]?.name||cid}</span>`
-      ).join('<span style="color:#3a2810;margin:0 3px">·</span>');
+      const charDisplay = chars.map(cid => {
+        if (cid === 'random') return `<span style="font-size:.78em;color:#907040;font-style:italic">↺ Random</span>`;
+        return `<span class="lobby-char-dot" style="background:${CHARS[cid]?.color||'#888'}"></span>` +
+          `<span style="font-size:.78em;color:#c8b880">${CHARS[cid]?.name||cid}</span>`;
+      }).join('<span style="color:#3a2810;margin:0 4px">·</span>');
       return `<div class="lobby-player-row">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="color:#c8b880;font-size:.85em">${p.name}${isHost?' 👑':''}</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="color:${isHost?'#f0c040':'#c8b880'};font-size:.85em;font-weight:${isHost?'bold':'normal'}">${p.name}${isHost?' 👑':''}</span>
           ${p.ready?'<span style="color:#50a850;font-size:.75em">✓ Ready</span>':''}
           ${offline?'<span style="color:#906050;font-size:.72em">(offline)</span>':''}
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
-          ${charDots||'<span style="color:#504030;font-size:.75em;font-style:italic">No characters yet</span>'}
-        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px">${charDisplay}</div>
       </div>`;
     }
   }).join('');
@@ -950,7 +949,7 @@ function renderLobby(lobby) {
   // Restore name input focus + caret
   if (editingName) {
     const inp = document.querySelector('.lobby-name-input');
-    if (inp) { inp.value = savedNameVal; inp.focus(); try { inp.setSelectionRange(savedCaret,savedCaret); } catch(e){} }
+    if (inp) { inp.value = savedName; inp.focus(); try { inp.setSelectionRange(savedCaret,savedCaret); } catch(e){} }
   }
 
   const total = sorted.length, ready = sorted.filter(([,p])=>p.ready).length;
@@ -959,24 +958,28 @@ function renderLobby(lobby) {
 
   const myReady = players[myId]?.ready;
   const rb = document.getElementById('lobby-ready-btn');
-  rb.textContent = myReady ? '✓ Ready' : 'Mark Ready';
-  rb.style.opacity = myReady ? '1' : '.65';
+  if (myReady) {
+    rb.textContent = 'Undo Ready';
+    rb.className = 'btn btn-sm btn-danger';
+  } else {
+    rb.textContent = 'Mark Ready';
+    rb.className = 'btn btn-sm btn-green';
+  }
 
   document.getElementById('lobby-start-btn').style.display = lobby.host === myId ? '' : 'none';
 }
 
-// ── Optimistic char change ──────────────────────────────────────────────────
+// ── Optimistic char / name changes ─────────────────────────────────────────
 function onLobbyCharChange(slot, charId) {
   const myId = getPlayerId();
   if (!_localLobby?.players?.[myId]) return;
-  const chars = [...(_localLobby.players[myId].chars || [])];
-  while (chars.length <= 1) chars.push(''); // ensure 2 slots
-  chars[slot] = charId || '';
-  const filtered = chars.filter(Boolean);
-  _localLobby.players[myId].chars = filtered;
-  renderLobby(_localLobby); // instant local update
+  const chars = [...(_localLobby.players[myId].chars || ['random','random'])];
+  while (chars.length < 2) chars.push('random');
+  chars[slot] = charId || 'random';
+  _localLobby.players[myId].chars = chars;
+  renderLobby(_localLobby);
   clearTimeout(_charPushTimer);
-  _charPushTimer = setTimeout(() => pushLobbyChars(filtered), 700);
+  _charPushTimer = setTimeout(() => pushLobbyChars(chars), 700);
 }
 
 async function pushLobbyChars(chars) {
@@ -998,22 +1001,6 @@ async function pushLobbyName(name) {
   }).catch(() => {});
 }
 
-function lobbyRandom() {
-  const myId = getPlayerId();
-  if (!_localLobby?.players?.[myId]) return;
-  const takenByOthers = new Set(
-    Object.entries(_localLobby.players).filter(([pid])=>pid!==myId).flatMap(([,p])=>p.chars||[])
-  );
-  const avail = Object.keys(CHARS).filter(c => !takenByOthers.has(c));
-  // Fisher-Yates shuffle
-  for (let i=avail.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[avail[i],avail[j]]=[avail[j],avail[i]];}
-  const picks = avail.slice(0,2);
-  _localLobby.players[myId].chars = picks;
-  renderLobby(_localLobby);
-  clearTimeout(_charPushTimer);
-  _charPushTimer = setTimeout(() => pushLobbyChars(picks), 700);
-}
-
 async function toggleLobbyReady() {
   const myId = getPlayerId();
   const cur = _localLobby?.players?.[myId]?.ready || false;
@@ -1026,18 +1013,30 @@ async function toggleLobbyReady() {
 }
 
 async function startFromLobby() {
-  const lobby = _localLobby;
-  if (!lobby) return;
-  // Re-fetch to get authoritative final state before starting
+  if (!_localLobby) return;
+  // Authoritative fetch before start
   const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby.json`).catch(()=>null);
-  const authLobby = res?.ok ? (await res.json()) : lobby;
+  const authLobby = (res?.ok ? await res.json() : null) || _localLobby;
   const sorted = lobbyPlayerOrder(authLobby.players||{}, authLobby.host);
-  const names = sorted.map(([,p])=>p.name);
-  let charAssignment = sorted.map(([,p])=>p.chars||[]);
-  if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0] = ['frodo-sam',...charAssignment[0]];
-  charAssignment = charAssignment.map(cs=>cs.length?cs:['frodo-sam']);
+
+  // Two-pass random resolution
+  const globalTaken = new Set(
+    sorted.flatMap(([,p])=>(p.chars||[]).filter(c=>c!=='random'))
+  );
+  let charAssignment = sorted.map(([,p]) =>
+    (p.chars||['random','random']).map(c => {
+      if (c !== 'random') return c;
+      const avail = Object.keys(CHARS).find(k => !globalTaken.has(k));
+      if (avail) { globalTaken.add(avail); return avail; }
+      return null;
+    }).filter(Boolean)
+  );
+  // Guarantee frodo-sam is somewhere
+  if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0].unshift('frodo-sam');
+  charAssignment = charAssignment.map(cs => cs.length ? cs : [Object.keys(CHARS)[0]]);
+
   const { difficulty, cardPrefs, boons } = authLobby.settings || {};
-  newGame({ numPlayers: sorted.length, playerNames: names, charAssignment, difficulty, cardPrefs, boons });
+  newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons });
   G.roomCode = _lobbyRoomCode;
   G.playerIds = sorted.map(([pid])=>pid);
   G.savedAt = Date.now();
@@ -1070,60 +1069,88 @@ async function leaveLobby() {
   document.getElementById('setup').style.display = 'flex';
 }
 
+// Apply a Firebase SSE path-relative update (put = replace at path, patch = shallow merge at path)
+function applyFirebasePath(base, path, data, merge) {
+  const copy = base ? JSON.parse(JSON.stringify(base)) : {};
+  if (!path || path === '/') {
+    if (data === null) return copy;
+    return merge ? Object.assign(copy, data) : (typeof data === 'object' && !Array.isArray(data) ? {...copy, ...data} : data);
+  }
+  const parts = path.replace(/^\//, '').split('/');
+  let cur = copy;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (cur[parts[i]] == null || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+    cur = cur[parts[i]];
+  }
+  const last = parts[parts.length - 1];
+  if (data === null) delete cur[last];
+  else if (merge && typeof data === 'object' && !Array.isArray(data)) cur[last] = Object.assign({}, cur[last]||{}, data);
+  else cur[last] = data;
+  return copy;
+}
+
+function handleLobbyServerLobby(serverLobby, code) {
+  if (!serverLobby || typeof serverLobby !== 'object') return;
+
+  if (serverLobby.status === 'playing') {
+    stopLobbyStream(); stopHeartbeat();
+    cloudLoad(code).then(state => {
+      if (!state) return;
+      G = state;
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('game').style.display = 'flex';
+      requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); startCloudStream(code); });
+    });
+    return;
+  }
+
+  const myId = getPlayerId();
+  // Keep my optimistic local state; take server state for everyone else
+  const myLocal = _localLobby?.players?.[myId];
+  _localLobby = serverLobby;
+  if (!_localLobby.players) _localLobby.players = {};
+  if (myLocal) _localLobby.players[myId] = myLocal;
+
+  // Conflict check: only real chars (not 'random') can conflict
+  const otherReal = new Set(
+    Object.entries(_localLobby.players).filter(([pid])=>pid!==myId)
+      .flatMap(([,p])=>(p.chars||[]).filter(c=>c!=='random'))
+  );
+  const myChars = myLocal?.chars || ['random','random'];
+  const hasConflict = myChars.some(c => c !== 'random' && otherReal.has(c));
+
+  if (hasConflict) {
+    const allTaken = new Set(Object.values(_localLobby.players).flatMap(p=>(p.chars||[]).filter(c=>c!=='random')));
+    const resolved = myChars.map(c => {
+      if (c === 'random' || !otherReal.has(c)) return c;
+      const avail = Object.keys(CHARS).find(k => !allTaken.has(k));
+      showToast(`${CHARS[c]?.name||c} was taken — ${avail ? 'switched to '+CHARS[avail]?.name : 'set to random'}`);
+      if (avail) { allTaken.add(avail); return avail; }
+      return 'random';
+    });
+    _localLobby.players[myId].chars = resolved;
+    clearTimeout(_charPushTimer);
+    _charPushTimer = setTimeout(() => pushLobbyChars(resolved), 200);
+  }
+
+  renderLobby(_localLobby);
+}
+
 function startLobbyStream(code) {
   stopLobbyStream();
   _lobbyStream = new EventSource(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby.json?stream=true`);
-  _lobbyStream.addEventListener('put', e => {
+
+  const onEvent = (e, merge) => {
     try {
-      const serverLobby = JSON.parse(e.data)?.data;
-      if (!serverLobby) return;
+      const { path, data } = JSON.parse(e.data);
+      // Reconstruct full lobby from path-relative update
+      const updated = applyFirebasePath(_localLobby, path, data, merge);
+      handleLobbyServerLobby(updated, code);
+    } catch(err) { console.warn('Lobby SSE parse error:', err); }
+  };
 
-      if (serverLobby.status === 'playing') {
-        stopLobbyStream(); stopHeartbeat();
-        cloudLoad(code).then(state => {
-          if (!state) return;
-          G = state;
-          document.getElementById('lobby').style.display = 'none';
-          document.getElementById('game').style.display = 'flex';
-          requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); startCloudStream(code); });
-        });
-        return;
-      }
-
-      const myId = getPlayerId();
-      // Merge: use server state for everyone else, but keep my local (optimistic) state
-      const myLocal = _localLobby?.players?.[myId];
-      _localLobby = serverLobby;
-      if (myLocal) _localLobby.players[myId] = myLocal;
-
-      // Conflict check: did someone else just grab one of my chars?
-      const otherChars = new Set(
-        Object.entries(_localLobby.players).filter(([pid])=>pid!==myId).flatMap(([,p])=>p.chars||[])
-      );
-      const myChars = myLocal?.chars || [];
-      const conflicts = myChars.filter(c => otherChars.has(c));
-
-      if (conflicts.length > 0) {
-        const allTaken = new Set(Object.values(_localLobby.players).flatMap(p=>p.chars||[]));
-        const resolved = [];
-        for (const c of myChars) {
-          if (otherChars.has(c)) {
-            // Find a free replacement
-            const avail = Object.keys(CHARS).find(k => !allTaken.has(k) && !resolved.includes(k));
-            showToast(`${CHARS[c]?.name||c} was taken — ${avail ? 'reassigned to '+CHARS[avail]?.name : 'removed'}`);
-            if (avail) { resolved.push(avail); allTaken.add(avail); }
-          } else {
-            resolved.push(c);
-          }
-        }
-        _localLobby.players[myId].chars = resolved;
-        clearTimeout(_charPushTimer);
-        _charPushTimer = setTimeout(() => pushLobbyChars(resolved), 200);
-      }
-
-      renderLobby(_localLobby);
-    } catch(err) { console.warn('Lobby SSE error:', err); }
-  });
+  _lobbyStream.addEventListener('put',   e => onEvent(e, false));
+  _lobbyStream.addEventListener('patch', e => onEvent(e, true));
   _lobbyStream.onerror = () => console.warn('Lobby stream reconnecting…');
 }
 
