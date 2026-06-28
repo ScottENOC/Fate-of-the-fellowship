@@ -709,8 +709,9 @@ function showToast(msg, ms=2500) {
 
 // Player identity — persists across sessions
 function getPlayerId() {
-  let id = localStorage.getItem('mp-player-id');
-  if (!id) { id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); localStorage.setItem('mp-player-id', id); }
+  // sessionStorage = one identity per browser tab, persists across refreshes but not new tabs
+  let id = sessionStorage.getItem('mp-player-id');
+  if (!id) { id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); sessionStorage.setItem('mp-player-id', id); }
   return id;
 }
 function getSetupName() {
