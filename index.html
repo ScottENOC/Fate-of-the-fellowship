@@ -133,15 +133,14 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 #lobby{display:none;flex-direction:column;align-items:center;background:linear-gradient(160deg,#0e0c08 0%,#1a1208 100%);min-height:100vh;padding:24px 16px 40px;overflow-y:auto;gap:16px}
 #lobby h1{font-size:2.2em;color:#c8a050;text-shadow:0 0 20px #c8a05080;letter-spacing:2px;margin:0}
 .lobby-code{font-size:1.7em;color:#f0c040;letter-spacing:5px;font-weight:bold;font-family:monospace}
-.lobby-main{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;width:100%;max-width:960px}
-.lobby-player-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:5px;border:1px solid #3a2810;font-size:.85em}
-.lobby-player-row.is-me{border-color:#c8a050;background:#1e1a10}
-.lobby-char-card{border:2px solid #2a2010;border-radius:6px;padding:8px 10px;cursor:pointer;transition:all .15s;user-select:none;min-width:140px}
-.lobby-char-card:hover:not(.char-taken){border-color:#c8a050}
-.lobby-char-card.char-mine{background:rgba(200,160,80,.1)}
-.lobby-char-card.char-taken{opacity:.4;cursor:default}
-.lobby-char-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
-@media(max-width:600px){.lobby-main{gap:10px}.lobby-char-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}}
+.lobby-main{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;width:100%;max-width:860px}
+.lobby-player-row{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:6px;border:1px solid #3a2810}
+.lobby-player-row.is-me{border-color:#c8a050;background:#1a1510}
+.lobby-name-input{background:#0e0c08;border:1px solid #c8a050;color:#f0c040;padding:3px 7px;border-radius:4px;font-family:inherit;font-size:.85em;width:130px}
+.lobby-char-sel{background:#0e0c08;border:1px solid #4a3820;color:#d4c4a0;padding:4px 6px;border-radius:4px;font-family:inherit;font-size:.78em;max-width:170px;cursor:pointer}
+.lobby-char-sel:focus{outline:1px solid #c8a050}
+.lobby-char-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:4px;flex-shrink:0}
+@media(max-width:600px){.lobby-main{gap:10px}.lobby-char-sel{max-width:130px}.lobby-name-input{width:110px}}
 /* ── MAP NODES ── */
 .loc-circle{stroke-width:2;cursor:pointer;transition:all .1s}
 .loc-label{font-size:9px;fill:#e8d8b0;pointer-events:none;font-family:Palatino,serif;text-shadow:1px 1px 2px #000}
@@ -272,21 +271,17 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
     <span id="lobby-room-code" class="lobby-code"></span>
     <button class="btn btn-sm" onclick="copyRoomCode()">Copy Code</button>
   </div>
-  <p style="font-size:.8em;color:#706050;margin:0;text-align:center">Share this code with your family. Anyone can join from any device.</p>
+  <p style="font-size:.8em;color:#706050;margin:0;text-align:center">Share this code. Each player picks up to 2 characters — the same character can only be picked once.</p>
   <div class="lobby-main">
-    <div class="setup-card" style="min-width:250px;flex:1;max-width:360px">
-      <h3>Fellowship</h3>
-      <div id="lobby-player-list" style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px"></div>
+    <div class="setup-card" style="flex:1;min-width:300px;max-width:800px">
+      <h3>Fellowship <span style="font-size:.7em;font-weight:normal;color:#706050">— host 👑 picks first</span></h3>
+      <div id="lobby-player-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px"></div>
       <div id="lobby-status-msg" style="font-size:.78em;color:#907040;margin-bottom:10px;min-height:1.2em"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button id="lobby-ready-btn" class="btn btn-sm btn-green" onclick="toggleLobbyReady()">Mark Ready</button>
         <button id="lobby-start-btn" class="btn btn-sm" onclick="startFromLobby()" style="display:none">⚔ Start Quest</button>
         <button class="btn btn-sm btn-danger" onclick="leaveLobby()" style="margin-left:auto">← Leave</button>
       </div>
-    </div>
-    <div class="setup-card" style="flex:2;min-width:260px">
-      <h3>Claim Characters <span style="font-size:.7em;font-weight:normal;color:#706050">— click to claim / click again to release</span></h3>
-      <div id="lobby-char-grid" class="lobby-char-grid"></div>
     </div>
   </div>
 </div>
@@ -859,113 +854,193 @@ async function joinLobbyFromSetup() {
   } catch(e) { btn.textContent = '☁ Join Room'; btn.disabled = false; alert('Could not reach cloud.'); }
 }
 
+let _localLobby = null;  // optimistic local mirror of Firebase lobby
+let _charPushTimer = null;
+
 function enterLobby(code, lobby) {
   _lobbyRoomCode = code;
+  _localLobby = JSON.parse(JSON.stringify(lobby)); // deep copy
   document.getElementById('setup').style.display = 'none';
   document.getElementById('lobby').style.display = 'flex';
   document.getElementById('lobby-room-code').textContent = code;
-  renderLobby(lobby);
+  renderLobby(_localLobby);
   startLobbyStream(code);
   startHeartbeat(code);
 }
 
+function lobbyPlayerOrder(players, hostId) {
+  return Object.entries(players).sort((a,b) => {
+    if (a[0] === hostId) return -1;
+    if (b[0] === hostId) return 1;
+    return (a[1].joinedAt||0) - (b[1].joinedAt||0);
+  });
+}
+
 function renderLobby(lobby) {
+  if (!lobby) return;
   const myId = getPlayerId();
   const players = lobby.players || {};
-  const sorted = Object.entries(players).sort((a,b) => (a[1].joinedAt||0) - (b[1].joinedAt||0));
+  const sorted = lobbyPlayerOrder(players, lobby.host);
   const now = Date.now();
 
-  // Player list
+  // Build set of all chars taken by others
+  const takenByOthers = new Set(
+    Object.entries(players).filter(([pid])=>pid!==myId).flatMap(([,p])=>p.chars||[])
+  );
+
+  // Preserve focus state so name input survives re-render
+  const activeEl = document.activeElement;
+  const editingName = activeEl?.classList.contains('lobby-name-input');
+  const savedNameVal = editingName ? activeEl.value : null;
+  const savedCaret = editingName ? activeEl.selectionStart : null;
+
+  const charEntries = Object.entries(CHARS);
+
   document.getElementById('lobby-player-list').innerHTML = sorted.map(([pid, p]) => {
     const isMe = pid === myId;
     const isHost = pid === lobby.host;
     const offline = now - (p.lastSeen||0) > 90000;
-    const charNames = (p.chars||[]).map(cid => CHARS[cid]?.name || cid).join(', ') || '—';
-    return `<div class="lobby-player-row${isMe?' is-me':''}">
-      <span style="color:${isMe?'#f0c040':'#c8b880'};font-weight:${isMe?'bold':'normal'}">${p.name}${isHost?' 👑':''}</span>
-      ${p.ready?'<span style="color:#50a850;font-size:.75em">✓</span>':''}
-      ${offline?'<span style="color:#906050;font-size:.7em">(offline)</span>':''}
-      <span style="color:#706050;font-size:.72em;margin-left:auto;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${charNames}">${charNames}</span>
-    </div>`;
+    const chars = p.chars || [];
+
+    if (isMe) {
+      // Build dropdown HTML — disable chars taken by others or already in my other slot
+      const makeDropdown = (slot) => {
+        const cur = chars[slot] || '';
+        const other = chars[slot === 0 ? 1 : 0] || '';
+        const ph = slot === 0 ? '— Character 1 —' : '— Character 2 (optional) —';
+        const opts = charEntries.map(([cid, ch]) => {
+          const disabled = (takenByOthers.has(cid) || cid === other) && cid !== cur;
+          return `<option value="${cid}"${cid===cur?' selected':''}${disabled?' disabled':''}>
+            ${ch.name}${takenByOthers.has(cid)&&cid!==cur?' ✗':''}
+          </option>`;
+        }).join('');
+        return `<select class="lobby-char-sel" onchange="onLobbyCharChange(${slot},this.value)">
+          <option value="">${ph}</option>${opts}</select>`;
+      };
+      return `<div class="lobby-player-row is-me">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input class="lobby-name-input" value="${p.name.replace(/"/g,'&quot;')}" placeholder="Your name"
+            onblur="pushLobbyName(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+          ${isHost?'<span title="Host">👑</span>':''}
+          ${p.ready?'<span style="color:#50a850;font-size:.75em">✓ Ready</span>':''}
+          ${offline?'<span style="color:#906050;font-size:.72em">(offline)</span>':''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${makeDropdown(0)}${makeDropdown(1)}
+          <button class="btn btn-sm" onclick="lobbyRandom()" style="font-size:.72em;padding:3px 8px">↺ Random</button>
+        </div>
+      </div>`;
+    } else {
+      const charDots = chars.map(cid =>
+        `<span class="lobby-char-dot" style="background:${CHARS[cid]?.color||'#888'}"></span><span style="font-size:.78em;color:#c8b880">${CHARS[cid]?.name||cid}</span>`
+      ).join('<span style="color:#3a2810;margin:0 3px">·</span>');
+      return `<div class="lobby-player-row">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:#c8b880;font-size:.85em">${p.name}${isHost?' 👑':''}</span>
+          ${p.ready?'<span style="color:#50a850;font-size:.75em">✓ Ready</span>':''}
+          ${offline?'<span style="color:#906050;font-size:.72em">(offline)</span>':''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+          ${charDots||'<span style="color:#504030;font-size:.75em;font-style:italic">No characters yet</span>'}
+        </div>
+      </div>`;
+    }
   }).join('');
 
-  // Status
+  // Restore name input focus + caret
+  if (editingName) {
+    const inp = document.querySelector('.lobby-name-input');
+    if (inp) { inp.value = savedNameVal; inp.focus(); try { inp.setSelectionRange(savedCaret,savedCaret); } catch(e){} }
+  }
+
   const total = sorted.length, ready = sorted.filter(([,p])=>p.ready).length;
   document.getElementById('lobby-status-msg').textContent =
-    total <= 1 ? 'Waiting for others to join…' : `${ready} of ${total} ready`;
+    total <= 1 ? 'Waiting for others to join…' : `${ready} of ${total} ready to play`;
 
-  // My ready button label
   const myReady = players[myId]?.ready;
   const rb = document.getElementById('lobby-ready-btn');
   rb.textContent = myReady ? '✓ Ready' : 'Mark Ready';
   rb.style.opacity = myReady ? '1' : '.65';
 
-  // Start button (host only)
   document.getElementById('lobby-start-btn').style.display = lobby.host === myId ? '' : 'none';
-
-  renderLobbyChars(lobby);
 }
 
-function hexToRgb(hex) {
-  return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)).join(',');
-}
-
-function renderLobbyChars(lobby) {
+// ── Optimistic char change ──────────────────────────────────────────────────
+function onLobbyCharChange(slot, charId) {
   const myId = getPlayerId();
-  const players = lobby.players || {};
-  const claimed = {}; // charId → {pid, name}
-  Object.entries(players).forEach(([pid, p]) => (p.chars||[]).forEach(cid => { claimed[cid] = {pid, name: p.name}; }));
-
-  document.getElementById('lobby-char-grid').innerHTML = Object.entries(CHARS).map(([cid, ch]) => {
-    const cl = claimed[cid];
-    const isMe = cl?.pid === myId;
-    const isTaken = cl && !isMe;
-    return `<div class="lobby-char-card${isMe?' char-mine':''}${isTaken?' char-taken':''}"
-      style="border-color:${isMe?ch.color:(isTaken?'#2a2010':'#2a2010')};background:${isMe?`rgba(${hexToRgb(ch.color)},.12)`:'#0e0c08'}"
-      onclick="${isTaken?'':'lobbyToggleChar(\''+cid+'\')'}">
-      <div style="font-size:.82em;font-weight:bold;color:${isMe?ch.color:'#c8b880'}">${ch.name}</div>
-      <div style="font-size:.7em;color:${isMe?'#80c880':(isTaken?'#806050':'#504030')};margin-top:2px">
-        ${isMe?'✓ Yours':(cl?'Taken by '+cl.name:'Available')}
-      </div>
-    </div>`;
-  }).join('');
+  if (!_localLobby?.players?.[myId]) return;
+  const chars = [...(_localLobby.players[myId].chars || [])];
+  while (chars.length <= 1) chars.push(''); // ensure 2 slots
+  chars[slot] = charId || '';
+  const filtered = chars.filter(Boolean);
+  _localLobby.players[myId].chars = filtered;
+  renderLobby(_localLobby); // instant local update
+  clearTimeout(_charPushTimer);
+  _charPushTimer = setTimeout(() => pushLobbyChars(filtered), 700);
 }
 
-async function lobbyToggleChar(charId) {
+async function pushLobbyChars(chars) {
+  if (!_lobbyRoomCode) return;
   const myId = getPlayerId();
-  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/chars.json`);
-  let chars = (await res.json()) || [];
-  chars = chars.includes(charId) ? chars.filter(c=>c!==charId) : [...chars, charId];
   await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/chars.json`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chars)
-  });
+  }).catch(e => console.warn('pushLobbyChars:', e));
+}
+
+async function pushLobbyName(name) {
+  const myId = getPlayerId();
+  name = name.trim() || 'Wanderer';
+  localStorage.setItem('mp-player-name', name);
+  if (_localLobby?.players?.[myId]) _localLobby.players[myId].name = name;
+  if (!_lobbyRoomCode) return;
+  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/name.json`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(name)
+  }).catch(() => {});
+}
+
+function lobbyRandom() {
+  const myId = getPlayerId();
+  if (!_localLobby?.players?.[myId]) return;
+  const takenByOthers = new Set(
+    Object.entries(_localLobby.players).filter(([pid])=>pid!==myId).flatMap(([,p])=>p.chars||[])
+  );
+  const avail = Object.keys(CHARS).filter(c => !takenByOthers.has(c));
+  // Fisher-Yates shuffle
+  for (let i=avail.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[avail[i],avail[j]]=[avail[j],avail[i]];}
+  const picks = avail.slice(0,2);
+  _localLobby.players[myId].chars = picks;
+  renderLobby(_localLobby);
+  clearTimeout(_charPushTimer);
+  _charPushTimer = setTimeout(() => pushLobbyChars(picks), 700);
 }
 
 async function toggleLobbyReady() {
   const myId = getPlayerId();
-  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/ready.json`);
-  const cur = await res.json();
+  const cur = _localLobby?.players?.[myId]?.ready || false;
+  if (_localLobby?.players?.[myId]) _localLobby.players[myId].ready = !cur;
+  renderLobby(_localLobby);
+  if (!_lobbyRoomCode) return;
   await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}/ready.json`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(!cur)
-  });
+  }).catch(() => {});
 }
 
 async function startFromLobby() {
-  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby.json`);
-  const lobby = await res.json();
+  const lobby = _localLobby;
   if (!lobby) return;
-  const sorted = Object.entries(lobby.players||{}).sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));
+  // Re-fetch to get authoritative final state before starting
+  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby.json`).catch(()=>null);
+  const authLobby = res?.ok ? (await res.json()) : lobby;
+  const sorted = lobbyPlayerOrder(authLobby.players||{}, authLobby.host);
   const names = sorted.map(([,p])=>p.name);
   let charAssignment = sorted.map(([,p])=>p.chars||[]);
-  // Ensure frodo-sam is assigned
   if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0] = ['frodo-sam',...charAssignment[0]];
   charAssignment = charAssignment.map(cs=>cs.length?cs:['frodo-sam']);
-  const { difficulty, cardPrefs, boons } = lobby.settings || {};
+  const { difficulty, cardPrefs, boons } = authLobby.settings || {};
   newGame({ numPlayers: sorted.length, playerNames: names, charAssignment, difficulty, cardPrefs, boons });
   G.roomCode = _lobbyRoomCode;
   G.playerIds = sorted.map(([pid])=>pid);
   G.savedAt = Date.now();
-  // Push game state + mark lobby as playing (two requests)
   await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/state.json`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(G)
   });
@@ -987,9 +1062,10 @@ function transitionLobbyToGame() {
 
 async function leaveLobby() {
   const myId = getPlayerId();
-  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}.json`, { method: 'DELETE' });
+  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/players/${myId}.json`, { method: 'DELETE' })
+    .catch(()=>{});
   stopLobbyStream(); stopHeartbeat();
-  _lobbyRoomCode = null;
+  _lobbyRoomCode = null; _localLobby = null;
   document.getElementById('lobby').style.display = 'none';
   document.getElementById('setup').style.display = 'flex';
 }
@@ -999,10 +1075,10 @@ function startLobbyStream(code) {
   _lobbyStream = new EventSource(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby.json?stream=true`);
   _lobbyStream.addEventListener('put', e => {
     try {
-      const lobby = JSON.parse(e.data)?.data;
-      if (!lobby) return;
-      if (lobby.status === 'playing') {
-        // Game started — load state and transition
+      const serverLobby = JSON.parse(e.data)?.data;
+      if (!serverLobby) return;
+
+      if (serverLobby.status === 'playing') {
         stopLobbyStream(); stopHeartbeat();
         cloudLoad(code).then(state => {
           if (!state) return;
@@ -1013,8 +1089,40 @@ function startLobbyStream(code) {
         });
         return;
       }
-      renderLobby(lobby);
-    } catch(err) {}
+
+      const myId = getPlayerId();
+      // Merge: use server state for everyone else, but keep my local (optimistic) state
+      const myLocal = _localLobby?.players?.[myId];
+      _localLobby = serverLobby;
+      if (myLocal) _localLobby.players[myId] = myLocal;
+
+      // Conflict check: did someone else just grab one of my chars?
+      const otherChars = new Set(
+        Object.entries(_localLobby.players).filter(([pid])=>pid!==myId).flatMap(([,p])=>p.chars||[])
+      );
+      const myChars = myLocal?.chars || [];
+      const conflicts = myChars.filter(c => otherChars.has(c));
+
+      if (conflicts.length > 0) {
+        const allTaken = new Set(Object.values(_localLobby.players).flatMap(p=>p.chars||[]));
+        const resolved = [];
+        for (const c of myChars) {
+          if (otherChars.has(c)) {
+            // Find a free replacement
+            const avail = Object.keys(CHARS).find(k => !allTaken.has(k) && !resolved.includes(k));
+            showToast(`${CHARS[c]?.name||c} was taken — ${avail ? 'reassigned to '+CHARS[avail]?.name : 'removed'}`);
+            if (avail) { resolved.push(avail); allTaken.add(avail); }
+          } else {
+            resolved.push(c);
+          }
+        }
+        _localLobby.players[myId].chars = resolved;
+        clearTimeout(_charPushTimer);
+        _charPushTimer = setTimeout(() => pushLobbyChars(resolved), 200);
+      }
+
+      renderLobby(_localLobby);
+    } catch(err) { console.warn('Lobby SSE error:', err); }
   });
   _lobbyStream.onerror = () => console.warn('Lobby stream reconnecting…');
 }
