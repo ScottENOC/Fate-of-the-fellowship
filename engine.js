@@ -442,6 +442,7 @@ function makeTurn(charIds, actionsEach = 4) {
   for (const id of charIds) charActions[id] = actionsEach;
   return {
     charActions,
+    actionsPool: charIds.length > 1 ? 5 : actionsEach,
     doneChars: [],
     primaryChar: null,
     eomerBonusTravelLeft: charIds.includes('eomer') ? 1 : 0,
@@ -461,19 +462,26 @@ function canAct(charId) {
 
 function spendAction(charId) {
   const t = G.turn;
-  if (!t.primaryChar) {
-    // First action of the turn — this char is primary, all others get 1 action
-    t.primaryChar = charId;
-    for (const id of Object.keys(t.charActions)) {
-      if (id !== charId) t.charActions[id] = 1;
-    }
-  } else if (t.primaryChar !== charId) {
-    // Switching to secondary — lock primary char out
-    if (!t.doneChars.includes(t.primaryChar)) {
+  const charIds = Object.keys(t.charActions);
+  const multiChar = charIds.length > 1;
+
+  if (multiChar) {
+    if (!t.primaryChar) {
+      t.primaryChar = charId;
+    } else if (t.primaryChar !== charId && !t.doneChars.includes(t.primaryChar)) {
+      // First action on secondary — lock primary out
       t.doneChars.push(t.primaryChar);
       t.charActions[t.primaryChar] = 0;
     }
+    t.actionsPool = Math.max(0, (t.actionsPool || 0) - 1);
+    // Keep secondary's displayed actions in sync with remaining pool (max 4)
+    for (const id of charIds) {
+      if (id !== t.primaryChar && !t.doneChars.includes(id)) {
+        t.charActions[id] = Math.min(t.actionsPool, 4);
+      }
+    }
   }
+
   t.charActions[charId] = Math.max(0, (t.charActions[charId] || 0) - 1);
   // Forfeit Éomer's bonus travel once any other character acts
   if (charId !== 'eomer' && t.eomerBonusTravelLeft > 0) {
