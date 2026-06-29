@@ -827,7 +827,7 @@ async function joinLobbyFromSetup() {
   const btn = document.getElementById('join-room-btn');
   btn.textContent = 'Joining…'; btn.disabled = true;
   try {
-    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}.json`);
+    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}.json`, { cache: 'no-store' });
     const roomData = await res.json();
     btn.textContent = '☁ Join Room'; btn.disabled = false;
     if (!roomData) { alert(`Room "${code}" not found.`); return; }
@@ -1015,10 +1015,16 @@ async function toggleLobbyReady() {
 
 async function startFromLobby() {
   if (!_localLobby) return;
-  // Authoritative fetch before start
-  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby.json`).catch(()=>null);
-  const authLobby = (res?.ok ? await res.json() : null) || _localLobby;
+  // Authoritative fetch before start — bypass cache so we see all joined players
+  const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby.json`, { cache: 'no-store' }).catch(()=>null);
+  const fetched = res?.ok ? await res.json() : null;
+  // Merge player lists: _localLobby is kept current by SSE stream, fetched may lag
+  const authLobby = fetched || _localLobby;
+  if (_localLobby?.players) {
+    authLobby.players = { ...(authLobby.players || {}), ..._localLobby.players };
+  }
   const sorted = lobbyPlayerOrder(authLobby.players||{}, authLobby.host);
+  if (sorted.length === 0) { showToast('⚠ No players found — cannot start'); return; }
 
   // Two-pass random resolution
   const globalTaken = new Set(
@@ -1041,9 +1047,16 @@ async function startFromLobby() {
   G.roomCode = _lobbyRoomCode;
   G.playerIds = sorted.map(([pid])=>pid);
   G.savedAt = Date.now();
-  await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/state.json`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(G)
-  });
+  try {
+    const stateRes = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/state.json`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(G)
+    });
+    if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
+  } catch(e) {
+    console.error('Failed to save game state to Firebase:', e);
+    showToast('⚠ Could not save game to cloud — check connection');
+    return;
+  }
   await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(_lobbyRoomCode)}/lobby/status.json`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify('playing')
   });
@@ -1095,13 +1108,26 @@ function handleLobbyServerLobby(serverLobby, code) {
 
   if (serverLobby.status === 'playing') {
     stopLobbyStream(); stopHeartbeat();
-    cloudLoad(code).then(state => {
-      if (!state) return;
+    (async () => {
+      // Retry cloudLoad — SSE may arrive before the state write is visible
+      let state = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 600 * attempt));
+        state = await cloudLoad(code);
+        if (state?.players?.length > 0) break;
+        state = null;
+      }
+      if (!state) {
+        showToast('⚠ Could not load game state — try rejoining');
+        // Re-show lobby so they can try again
+        document.getElementById('lobby').style.display = 'flex';
+        return;
+      }
       G = state;
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('game').style.display = 'flex';
       requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); startCloudStream(code); });
-    });
+    })();
     return;
   }
 
@@ -1418,6 +1444,7 @@ function buildMapToggles() {
 
 function render() {
   if (!G) return;
+  if (!G.players?.length || !G.players[G.currentPlayer]) { console.warn('render: invalid G state'); return; }
   autoSave();
   renderTopBar();
   renderCharList();
@@ -1690,7 +1717,7 @@ function renderObjectives() {
   const el = document.getElementById('obj-list');
   if (!el || !G) return;
   el.innerHTML = '';
-  for (const obj of G.objectives) {
+  for (const obj of (G.objectives || [])) {
     const div = document.createElement('div');
     div.className = 'obj-card' + (obj.done ? ' done' : '');
     const hint = obj.done ? 'Completed!' : obj.completeIf.slice(0, 55) + (obj.completeIf.length > 55 ? '…' : '');
