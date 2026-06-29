@@ -1828,33 +1828,36 @@ function renderActions() {
 
   // End Actions / Done button
   if (!isDone) {
-    const myCharIds = Object.keys(G.turn?.charActions || {});
-    const isMulti = myCharIds.length > 1;
-    const isPrimary = !G.turn?.primaryChar || G.turn?.primaryChar === sc;
+    const _charId = sc; // freeze charId for the closure
+    const _isMulti = Object.keys(G.turn?.charActions || {}).length > 1;
+    const _isPrimary = !G.turn?.primaryChar || G.turn?.primaryChar === sc;
     const doneBtn = document.createElement('button');
     doneBtn.className = 'action-btn btn-danger';
     doneBtn.style.gridColumn = '1 / -1';
-    doneBtn.textContent = isPrimary && isMulti ? 'End Actions →' : `Done with ${CHARS[sc].name}`;
-    doneBtn.title = isPrimary && isMulti ? 'Finish your actions with this character; 2nd character acts next' : 'Finish this character\'s actions';
+    doneBtn.textContent = _isPrimary && _isMulti ? 'End Actions →' : `Done with ${CHARS[sc].name}`;
     doneBtn.onclick = () => {
       const turn = G.turn;
       if (!turn) return;
+      // Re-read everything live from G.turn at click time
+      const charIds = Object.keys(turn.charActions || {});
+      const isMultiNow = charIds.length > 1;
+      const isPrimaryNow = !turn.primaryChar || turn.primaryChar === _charId;
       let secondaryChar = null;
       let secondaryAlloc = 0;
-      if (isPrimary && isMulti) {
-        const used = turn.actionsUsed?.[sc] ?? (4 - (turn.charActions[sc] || 0));
+      if (isPrimaryNow && isMultiNow) {
+        const used = (turn.actionsUsed?.[_charId] || 0);
         secondaryAlloc = used <= 1 ? 4 : 1;
-        turn.primaryChar = sc;
-        for (const id of Object.keys(turn.charActions)) {
-          if (id !== sc) { turn.charActions[id] = secondaryAlloc; secondaryChar = id; }
+        turn.primaryChar = _charId;
+        for (const id of charIds) {
+          if (id !== _charId) { turn.charActions[id] = secondaryAlloc; secondaryChar = id; }
         }
       }
-      turn.charActions[sc] = 0;
-      endCharActions(sc);
+      turn.charActions[_charId] = 0;
+      endCharActions(_charId);
       resetUI();
       UI.selectedChar = secondaryChar;
       if (secondaryChar) {
-        const p1 = CHARS[sc]?.name || sc;
+        const p1 = CHARS[_charId]?.name || _charId;
         const p2 = CHARS[secondaryChar]?.name || secondaryChar;
         showModal(`${p1}'s actions done`,
           `${p2} now has <strong>${secondaryAlloc}</strong> action${secondaryAlloc !== 1 ? 's' : ''}.`,
