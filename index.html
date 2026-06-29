@@ -814,13 +814,13 @@ function pickLobbyObjectives(difficulty, cardPrefs = {}) {
   const baseDiff = plusLevel > 0 ? 'legendary' : (difficulty || 'standard');
   const objCounts = { introductory:3, standard:3, heroic:4, epic:4, legendary:5 };
   const numOpt = (objCounts[baseDiff] ?? 3) + plusLevel;
+  const shuffle = arr => { for (let i = arr.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; };
   const optional = OBJECTIVES.filter(o => !o.required);
   const bucket = t => optional.filter(o => (cardPrefs[o.id] || 'normal') === t);
-  // Deterministic-ish shuffle: sort by id within each bucket for consistent display
   const ordered = [
-    ...bucket('prioritised').sort((a,b)=>a.id.localeCompare(b.id)),
-    ...bucket('normal').sort((a,b)=>a.id.localeCompare(b.id)),
-    ...bucket('avoid').sort((a,b)=>a.id.localeCompare(b.id)),
+    ...shuffle(bucket('prioritised')),
+    ...shuffle(bucket('normal')),
+    ...shuffle(bucket('avoid')),
   ];
   const required = OBJECTIVES.filter(o => o.required);
   return [...required, ...ordered.slice(0, numOpt)].map(o => o.id);
