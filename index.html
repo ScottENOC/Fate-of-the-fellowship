@@ -744,7 +744,7 @@ async function cloudSave() {
 
 async function cloudLoad(code) {
   try {
-    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/state.json`);
+    const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/state.json`, { cache: 'no-store' });
     if (!res.ok) throw new Error(res.status);
     return await res.json(); // G directly
   } catch(e) {
@@ -1114,7 +1114,7 @@ function handleLobbyServerLobby(serverLobby, code) {
       for (let attempt = 0; attempt < 5; attempt++) {
         if (attempt > 0) await new Promise(r => setTimeout(r, 600 * attempt));
         state = await cloudLoad(code);
-        if (state?.players?.length > 0) break;
+        if (state?.players?.length > 0 && state.players[0]?.hand != null) break;
         state = null;
       }
       if (!state) {
@@ -1126,7 +1126,13 @@ function handleLobbyServerLobby(serverLobby, code) {
       G = state;
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('game').style.display = 'flex';
-      requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); startCloudStream(code); });
+      requestAnimationFrame(() => {
+        try { alignSvgToImage(); } catch(e) { console.error('alignSvgToImage failed:', e); }
+        try { initMapPanZoom(); } catch(e) { console.error('initMapPanZoom failed:', e); }
+        try { buildMapToggles(); } catch(e) { console.error('buildMapToggles failed:', e); }
+        render();
+        startCloudStream(code);
+      });
     })();
     return;
   }
