@@ -1842,7 +1842,7 @@ function renderActions() {
       let secondaryChar = null;
       let secondaryAlloc = 0;
       if (isPrimary && isMulti) {
-        const used = 4 - (turn.charActions[sc] || 0);
+        const used = turn.actionsUsed?.[sc] ?? (4 - (turn.charActions[sc] || 0));
         secondaryAlloc = used <= 1 ? 4 : 1;
         turn.primaryChar = sc;
         for (const id of Object.keys(turn.charActions)) {
@@ -1853,7 +1853,6 @@ function renderActions() {
       endCharActions(sc);
       resetUI();
       UI.selectedChar = secondaryChar;
-      render();
       if (secondaryChar) {
         const p1 = CHARS[sc]?.name || sc;
         const p2 = CHARS[secondaryChar]?.name || secondaryChar;
@@ -1861,6 +1860,7 @@ function renderActions() {
           `${p2} now has <strong>${secondaryAlloc}</strong> action${secondaryAlloc !== 1 ? 's' : ''}.`,
           [{ label: `Act with ${p2}`, action: closeModal }]);
       }
+      render();
     };
     el.appendChild(doneBtn);
   }

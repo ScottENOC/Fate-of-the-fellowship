@@ -439,9 +439,11 @@ function checkHavenLost(locId) {
 // ── ACTIONS ───────────────────────────────────────────────────────────────────
 function makeTurn(charIds, actionsEach = 4) {
   const charActions = {};
-  for (const id of charIds) charActions[id] = actionsEach;
+  const actionsUsed = {};
+  for (const id of charIds) { charActions[id] = actionsEach; actionsUsed[id] = 0; }
   return {
     charActions,
+    actionsUsed,
     doneChars: [],
     primaryChar: null,
     eomerBonusTravelLeft: charIds.includes('eomer') ? 1 : 0,
@@ -467,6 +469,7 @@ function spendAction(charId) {
   const t = G.turn;
   if (!t.primaryChar) t.primaryChar = charId;
   t.charActions[charId] = Math.max(0, (t.charActions[charId] || 0) - 1);
+  if (t.actionsUsed) t.actionsUsed[charId] = (t.actionsUsed[charId] || 0) + 1;
   // Forfeit Éomer's bonus travel once any other character acts
   if (charId !== 'eomer' && t.eomerBonusTravelLeft > 0) {
     t.eomerBonusForfeited = true;
