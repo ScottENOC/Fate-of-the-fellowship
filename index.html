@@ -799,6 +799,28 @@ function copyRoomCode() {
   navigator.clipboard?.writeText(code).then(() => showToast('Room code copied!')).catch(() => showToast(code));
 }
 
+// ── LOBBY OBJECTIVE PRE-SELECTION ───────────────────────────────────────────
+// Pick objectives for the lobby based on difficulty (no char filter yet — that
+// comes at game start). Returns array of objective IDs so players can see what
+// characters they need to bring.
+function pickLobbyObjectives(difficulty, cardPrefs = {}) {
+  const plusMatch = (difficulty || 'standard').match(/^legendary\+(\d+)$/);
+  const plusLevel = plusMatch ? parseInt(plusMatch[1]) : 0;
+  const baseDiff = plusLevel > 0 ? 'legendary' : (difficulty || 'standard');
+  const objCounts = { introductory:3, standard:3, heroic:4, epic:4, legendary:5 };
+  const numOpt = (objCounts[baseDiff] ?? 3) + plusLevel;
+  const optional = OBJECTIVES.filter(o => !o.required);
+  const bucket = t => optional.filter(o => (cardPrefs[o.id] || 'normal') === t);
+  // Deterministic-ish shuffle: sort by id within each bucket for consistent display
+  const ordered = [
+    ...bucket('prioritised').sort((a,b)=>a.id.localeCompare(b.id)),
+    ...bucket('normal').sort((a,b)=>a.id.localeCompare(b.id)),
+    ...bucket('avoid').sort((a,b)=>a.id.localeCompare(b.id)),
+  ];
+  const required = OBJECTIVES.filter(o => o.required);
+  return [...required, ...ordered.slice(0, numOpt)].map(o => o.id);
+}
+
 // ── LOBBY ───────────────────────────────────────────────────────────────────
 async function createRoom() {
   const myId = getPlayerId();
@@ -809,10 +831,11 @@ async function createRoom() {
   const difficulty = document.getElementById('difficulty')?.value || 'standard';
   const cardPrefs = getCardPrefs();
   const boons = getBoons();
+  const selectedObjectiveIds = pickLobbyObjectives(difficulty, cardPrefs);
   const lobby = {
     host: myId,
     status: 'waiting',
-    settings: { difficulty, cardPrefs, boons },
+    settings: { difficulty, cardPrefs, boons, selectedObjectiveIds },
     players: {
       [myId]: { name: myName, chars: ['frodo-sam', 'random'], ready: false, lastSeen: Date.now(), joinedAt: Date.now() }
     }
@@ -974,22 +997,30 @@ function renderLobby(lobby) {
 
   document.getElementById('lobby-start-btn').style.display = lobby.host === myId ? '' : 'none';
 
-  // Character objectives panel
+  // Objectives panel — show pre-selected objectives with character coverage status
   const pickedChars = new Set(Object.values(players).flatMap(p => (p.chars||[]).filter(c=>c!=='random')));
-  const charObjs = OBJECTIVES.filter(o => !o.required && o.requiresChar);
+  const selectedIds = lobby.settings?.selectedObjectiveIds;
+  const objsToShow = selectedIds
+    ? selectedIds.map(id => OBJECTIVES.find(o => o.id === id)).filter(Boolean)
+    : OBJECTIVES.filter(o => !o.required && o.requiresChar);
   const objList = document.getElementById('lobby-obj-list');
   if (objList) {
-    objList.innerHTML = charObjs.map(o => {
-      const covered = pickedChars.has(o.requiresChar);
-      const charName = CHARS[o.requiresChar]?.name || o.requiresChar;
+    const missing = objsToShow.filter(o => o.requiresChar && !pickedChars.has(o.requiresChar));
+    const warning = missing.length > 0
+      ? `<div style="color:#e05050;font-size:.85em;padding:6px 0;border-bottom:1px solid #3a1010;margin-bottom:4px">
+           ⚠ Missing: ${missing.map(o=>CHARS[o.requiresChar]?.name||o.requiresChar).join(', ')}
+         </div>` : '';
+    objList.innerHTML = warning + objsToShow.map(o => {
+      const covered = !o.requiresChar || pickedChars.has(o.requiresChar);
+      const charName = o.requiresChar ? (CHARS[o.requiresChar]?.name || o.requiresChar) : null;
       return `<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px solid #2a2010">
         <span style="font-size:1.1em;flex-shrink:0">${covered ? '✅' : '○'}</span>
         <div>
           <div style="color:${covered?'#70d070':'#c8a050'};font-weight:bold">${o.name}</div>
-          <div style="color:${covered?'#507050':'#706050'}">Requires ${charName}</div>
+          ${charName ? `<div style="color:${covered?'#507050':'#705030'}">Requires ${charName}</div>` : ''}
         </div>
       </div>`;
-    }).join('') || '<div style="color:#706050">No character-specific objectives.</div>';
+    }).join('') || '<div style="color:#706050">No objectives for this difficulty.</div>';
   }
 }
 
@@ -1065,9 +1096,23 @@ async function startFromLobby() {
   if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0].unshift('frodo-sam');
   charAssignment = charAssignment.map(cs => cs.length ? cs : [Object.keys(CHARS)[0]]);
 
-  const { difficulty: rawDiff, cardPrefs, boons } = authLobby.settings || {};
+  const { difficulty: rawDiff, cardPrefs, boons, selectedObjectiveIds } = authLobby.settings || {};
   const difficulty = rawDiff || 'standard';
-  newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons });
+
+  // Enforce: all char-required objectives must be covered by assigned characters
+  const allAssigned = new Set(charAssignment.flat());
+  if (selectedObjectiveIds) {
+    const missing = selectedObjectiveIds
+      .map(id => OBJECTIVES.find(o => o.id === id))
+      .filter(o => o?.requiresChar && !allAssigned.has(o.requiresChar))
+      .map(o => `${CHARS[o.requiresChar]?.name || o.requiresChar} (for "${o.name}")`);
+    if (missing.length > 0) {
+      showToast(`⚠ Missing required characters: ${missing.slice(0,2).join(', ')}${missing.length>2?'…':''}`);
+      return;
+    }
+  }
+
+  newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons, selectedObjectiveIds });
   G.roomCode = _lobbyRoomCode;
   G.playerIds = sorted.map(([pid])=>pid);
   G.savedAt = Date.now();
@@ -1225,7 +1270,7 @@ function startHeartbeat(code) {
   _heartbeatTimer = setInterval(ping, 25000);
 
   // Polling fallback: re-fetch the lobby every 5s in case SSE misses an update
-  _lobbyPollTimer = setInterval(async () => {
+  _lobbyPollTimer = setInterval(async () => { // 3s fallback for SSE misses
     if (!_lobbyRoomCode || !_localLobby) return;
     try {
       const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby.json`, { cache: 'no-store' });
@@ -1233,7 +1278,7 @@ function startHeartbeat(code) {
       const fresh = await res.json();
       if (fresh && typeof fresh === 'object') handleLobbyServerLobby(fresh, code);
     } catch(e) {}
-  }, 5000);
+  }, 3000);
 }
 
 function stopHeartbeat() {

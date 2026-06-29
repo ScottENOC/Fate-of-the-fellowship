@@ -110,11 +110,22 @@ function newGame(cfg) {
   const objCounts = { introductory:3, standard:3, heroic:4, epic:4, legendary:5 };
   const numOpt = Math.min((objCounts[baseDiff] ?? 3) + plusLevel, OBJECTIVES.filter(o => !o.required).length);
   const requiredObjs = OBJECTIVES.filter(o => o.required);
-  const eligibleOptional = OBJECTIVES.filter(o => !o.required && (!o.requiresChar || allCharIds.includes(o.requiresChar)));
-  const computedObjectives = [
-    ...requiredObjs,
-    ...selectByPriority(eligibleOptional, cardPrefs, numOpt),
-  ].map(o => ({ ...o, done: false, reservedTroops: o.setupTroops || 0 }));
+  let computedObjectives;
+  const { selectedObjectiveIds } = cfg;
+  if (selectedObjectiveIds?.length) {
+    // Use lobby-pre-selected objectives, filtered to chars actually in game
+    const selected = selectedObjectiveIds
+      .map(id => OBJECTIVES.find(o => o.id === id))
+      .filter(o => o && (!o.requiresChar || allCharIds.includes(o.requiresChar)));
+    computedObjectives = selected;
+  } else {
+    const eligibleOptional = OBJECTIVES.filter(o => !o.required && (!o.requiresChar || allCharIds.includes(o.requiresChar)));
+    computedObjectives = [
+      ...requiredObjs,
+      ...selectByPriority(eligibleOptional, cardPrefs, numOpt),
+    ];
+  }
+  computedObjectives = computedObjectives.map(o => ({ ...o, done: false, reservedTroops: o.setupTroops || 0 }));
 
   const troopReserved = { dwarven:0, elven:0, rohirrim:0, gondor:0 };
   for (const obj of computedObjectives) {
