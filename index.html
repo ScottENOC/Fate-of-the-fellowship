@@ -1847,7 +1847,7 @@ function renderActions() {
       if (isPrimaryNow && isMultiNow) {
         const actionsPerChar = G.players[G.currentPlayer]?.actionsPerChar ?? 4;
         const used = turn.actionsUsed?.[_charId] ?? (actionsPerChar - (turn.charActions[_charId] || 0));
-        console.log('[EndActions] charId=', _charId, 'used=', used, 'charActions=', turn.charActions[_charId], 'actionsUsed=', turn.actionsUsed?.[_charId]);
+        alert(`[Debug] charId=${_charId}\nused=${used}\ncharActions[charId]=${turn.charActions[_charId]}\nactionsUsed[charId]=${turn.actionsUsed?.[_charId]}\nsecondaryAlloc=${secondaryAlloc}`);
         secondaryAlloc = used <= 1 ? 4 : 1;
         turn.primaryChar = _charId;
         for (const id of charIds) {
