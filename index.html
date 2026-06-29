@@ -133,7 +133,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 #lobby{display:none;flex-direction:column;align-items:center;background:linear-gradient(160deg,#0e0c08 0%,#1a1208 100%);min-height:100vh;padding:24px 16px 40px;overflow-y:auto;gap:16px}
 #lobby h1{font-size:2.2em;color:#c8a050;text-shadow:0 0 20px #c8a05080;letter-spacing:2px;margin:0}
 .lobby-code{font-size:1.7em;color:#f0c040;letter-spacing:5px;font-weight:bold;font-family:monospace}
-.lobby-main{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;width:100%;max-width:860px}
+.lobby-main{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;width:100%;max-width:1160px}
 .lobby-player-row{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:6px;border:1px solid #3a2810}
 .lobby-player-row.is-me{border-color:#c8a050;background:#1a1510}
 .lobby-name-input{background:#0e0c08;border:1px solid #c8a050;color:#f0c040;padding:3px 7px;border-radius:4px;font-family:inherit;font-size:.85em;width:130px}
@@ -282,6 +282,10 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <button id="lobby-start-btn" class="btn btn-sm" onclick="startFromLobby()" style="display:none">⚔ Start Quest</button>
         <button class="btn btn-sm btn-danger" onclick="leaveLobby()" style="margin-left:auto">← Leave</button>
       </div>
+    </div>
+    <div class="setup-card" style="min-width:260px;max-width:340px">
+      <h3>Character Objectives <span style="font-size:.7em;font-weight:normal;color:#706050">— pick these characters to unlock</span></h3>
+      <div id="lobby-obj-list" style="display:flex;flex-direction:column;gap:6px;font-size:.82em"></div>
     </div>
   </div>
 </div>
@@ -969,6 +973,24 @@ function renderLobby(lobby) {
   }
 
   document.getElementById('lobby-start-btn').style.display = lobby.host === myId ? '' : 'none';
+
+  // Character objectives panel
+  const pickedChars = new Set(Object.values(players).flatMap(p => (p.chars||[]).filter(c=>c!=='random')));
+  const charObjs = OBJECTIVES.filter(o => !o.required && o.requiresChar);
+  const objList = document.getElementById('lobby-obj-list');
+  if (objList) {
+    objList.innerHTML = charObjs.map(o => {
+      const covered = pickedChars.has(o.requiresChar);
+      const charName = CHARS[o.requiresChar]?.name || o.requiresChar;
+      return `<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px solid #2a2010">
+        <span style="font-size:1.1em;flex-shrink:0">${covered ? '✅' : '○'}</span>
+        <div>
+          <div style="color:${covered?'#70d070':'#c8a050'};font-weight:bold">${o.name}</div>
+          <div style="color:${covered?'#507050':'#706050'}">Requires ${charName}</div>
+        </div>
+      </div>`;
+    }).join('') || '<div style="color:#706050">No character-specific objectives.</div>';
+  }
 }
 
 // ── Optimistic char / name changes ─────────────────────────────────────────
