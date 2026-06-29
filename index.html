@@ -342,7 +342,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <span id="player-label">Player 1</span>
       </div>
       <div id="nazgul-row">Nazgûl: loading…</div>
-      <div id="room-display" class="room-code-display" style="display:none">☁ Room: <span id="room-code-val"></span></div>
+      <div id="room-display" class="room-code-display" style="display:none;font-size:.65em;color:#706050;text-align:right;padding:1px 0">Room: <span id="room-code-val"></span></div>
       <div id="supply-row" style="font-size:.72em;color:#706050;padding:1px 0;display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
 
@@ -352,10 +352,12 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <div class="section-title">Characters</div>
         <div id="char-list"></div>
       </div>
-      <!-- Tokens -->
+      <!-- Actions -->
       <div>
-        <div class="section-title">Symbol Tokens</div>
-        <div class="tokens-row" id="token-row"></div>
+        <div class="section-title">Actions</div>
+        <div id="action-hint" style="font-size:.75em;color:#907040;margin-bottom:4px;min-height:28px"></div>
+        <div class="actions-grid" id="action-grid"></div>
+        <button class="btn" id="phase-btn" onclick="clickPhaseBtn()">End Actions →</button>
       </div>
       <!-- Hand -->
       <div>
@@ -364,6 +366,11 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
           <button onclick="showDiscardPileModal()" style="background:none;border:1px solid #4a3820;color:#806040;font-size:.7em;padding:2px 6px;cursor:pointer;border-radius:3px;font-family:inherit">View Discard</button>
         </div>
         <div class="hand-cards" id="hand-list"></div>
+      </div>
+      <!-- Tokens -->
+      <div>
+        <div class="section-title">Symbol Tokens</div>
+        <div class="tokens-row" id="token-row"></div>
       </div>
       <!-- Objectives -->
       <div>
@@ -374,13 +381,6 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
       <div id="lt-section" style="display:none">
         <div class="section-title">Lieutenants</div>
         <div id="lt-list"></div>
-      </div>
-      <!-- Actions -->
-      <div>
-        <div class="section-title">Actions</div>
-        <div id="action-hint" style="font-size:.75em;color:#907040;margin-bottom:4px;min-height:28px"></div>
-        <div class="actions-grid" id="action-grid"></div>
-        <button class="btn" id="phase-btn" onclick="clickPhaseBtn()">End Actions →</button>
       </div>
     </div>
 
@@ -1709,8 +1709,8 @@ function renderActions() {
   const locData = LOCS[locId];
   const totalF = totalFriendlyAt(locId);
   const canAct_ = canAct(sc);
-  const isDone = G.turn.doneChars.includes(sc);
-  const actLeft = G.turn.charActions[sc] ?? 0;
+  const isDone = G.turn?.doneChars?.includes(sc) || false;
+  const actLeft = G.turn?.charActions?.[sc] ?? 0;
 
   if (UI.pendingAction) {
     hint.textContent = `Select target for ${UI.pendingAction}. [Esc to cancel]`;
@@ -1742,10 +1742,10 @@ function renderActions() {
     });
   }
   if (sc === 'eomer') {
-    const t = G.turn;
-    const bonusOk = t.eomerBonusTravelLeft > 0 && !t.eomerBonusForfeited;
+    const t = G.turn || {};
+    const bonusOk = (t.eomerBonusTravelLeft || 0) > 0 && !t.eomerBonusForfeited;
     const bonusTip = t.eomerBonusForfeited ? 'Forfeited — another character acted'
-                   : t.eomerBonusTravelLeft === 0 ? 'Already used this turn'
+                   : !t.eomerBonusTravelLeft ? 'Already used this turn'
                    : 'Rider of Rohan: 1 free travel action';
     actions.push({ key:'eomer-bonus-travel', label:'⚡ Bonus Travel', tip:bonusTip, ok: bonusOk });
   }
