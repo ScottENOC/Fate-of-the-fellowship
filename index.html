@@ -1006,19 +1006,36 @@ function renderLobby(lobby) {
     : OBJECTIVES.filter(o => !o.required && o.requiresChar);
   const objList = document.getElementById('lobby-obj-list');
   if (objList) {
+    const allPlayers = Object.values(lobby.players || {});
+    const totalRandomSlots = allPlayers.flatMap(p=>(p.chars||[]).filter(c=>c==='random')).length;
     const missing = objsToShow.filter(o => o.requiresChar && !pickedChars.has(o.requiresChar));
-    const warning = missing.length > 0
-      ? `<div style="color:#e05050;font-size:.85em;padding:6px 0;border-bottom:1px solid #3a1010;margin-bottom:4px">
-           ⚠ Missing: ${missing.map(o=>CHARS[o.requiresChar]?.name||o.requiresChar).join(', ')}
-         </div>` : '';
+    const missingIds = [...new Set(missing.map(o => o.requiresChar))];
+    const canCoverWithRandom = missingIds.length <= totalRandomSlots;
+    let warning = '';
+    if (missingIds.length > 0) {
+      const names = missingIds.map(id => CHARS[id]?.name || id).join(', ');
+      if (canCoverWithRandom) {
+        warning = `<div style="color:#c8a050;font-size:.85em;padding:6px 0;border-bottom:1px solid #2a1a00;margin-bottom:4px">
+          ↺ Random will draw: ${names}
+        </div>`;
+      } else {
+        warning = `<div style="color:#e05050;font-size:.85em;padding:6px 0;border-bottom:1px solid #3a1010;margin-bottom:4px">
+          ⚠ Must pick: ${names}
+        </div>`;
+      }
+    }
     objList.innerHTML = warning + objsToShow.map(o => {
       const covered = !o.requiresChar || pickedChars.has(o.requiresChar);
+      const coveredByRandom = o.requiresChar && !covered && canCoverWithRandom && missingIds.includes(o.requiresChar);
       const charName = o.requiresChar ? (CHARS[o.requiresChar]?.name || o.requiresChar) : null;
+      const icon = covered ? '✅' : coveredByRandom ? '↺' : '○';
+      const nameColor = covered ? '#70d070' : coveredByRandom ? '#c8a050' : '#c8a050';
+      const subColor = covered ? '#507050' : coveredByRandom ? '#705830' : '#705030';
       return `<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px solid #2a2010">
-        <span style="font-size:1.1em;flex-shrink:0">${covered ? '✅' : '○'}</span>
+        <span style="font-size:1.1em;flex-shrink:0">${icon}</span>
         <div>
-          <div style="color:${covered?'#70d070':'#c8a050'};font-weight:bold">${o.name}</div>
-          ${charName ? `<div style="color:${covered?'#507050':'#705030'}">Requires ${charName}</div>` : ''}
+          <div style="color:${nameColor};font-weight:bold">${o.name}</div>
+          ${charName ? `<div style="color:${subColor}">Requires ${charName}</div>` : ''}
         </div>
       </div>`;
     }).join('') || '<div style="color:#706050">No objectives for this difficulty.</div>';
@@ -1081,37 +1098,38 @@ async function startFromLobby() {
   const sorted = lobbyPlayerOrder(authLobby.players||{}, authLobby.host);
   if (sorted.length === 0) { showToast('⚠ No players found — cannot start'); return; }
 
-  // Two-pass random resolution
-  const globalTaken = new Set(
-    sorted.flatMap(([,p])=>(p.chars||[]).filter(c=>c!=='random'))
-  );
+  const { difficulty: rawDiff, cardPrefs, boons, selectedObjectiveIds } = authLobby.settings || {};
+  const difficulty = rawDiff || 'standard';
+
+  // Determine which chars are required by selected objectives but not explicitly picked
+  const explicitlyPicked = new Set(sorted.flatMap(([,p])=>(p.chars||[]).filter(c=>c!=='random')));
+  const requiredByObjectives = selectedObjectiveIds
+    ? selectedObjectiveIds.map(id => OBJECTIVES.find(o=>o.id===id)).filter(o=>o?.requiresChar && !explicitlyPicked.has(o.requiresChar)).map(o=>o.requiresChar)
+    : [];
+  const totalRandomSlots = sorted.flatMap(([,p])=>(p.chars||[]).filter(c=>c==='random')).length;
+
+  // Block only if required chars can't be covered even by randoms
+  if (requiredByObjectives.length > totalRandomSlots) {
+    showToast(`⚠ Missing required characters: ${[...new Set(requiredByObjectives)].map(id=>CHARS[id]?.name||id).join(', ')}`);
+    return;
+  }
+
+  // Random resolution: required-but-missing chars fill slots first, then general pool
+  const globalTaken = new Set(explicitlyPicked);
+  const priorityPool = [...new Set(requiredByObjectives)].filter(id => !globalTaken.has(id));
+  const generalPool = Object.keys(CHARS).filter(k => !globalTaken.has(k) && !priorityPool.includes(k));
+  const resolveRandom = () => {
+    if (priorityPool.length) { const id = priorityPool.shift(); globalTaken.add(id); return id; }
+    const id = generalPool.find(k => !globalTaken.has(k));
+    if (id) { globalTaken.add(id); return id; }
+    return null;
+  };
   let charAssignment = sorted.map(([,p]) =>
-    (p.chars||['random','random']).map(c => {
-      if (c !== 'random') return c;
-      const avail = Object.keys(CHARS).find(k => !globalTaken.has(k));
-      if (avail) { globalTaken.add(avail); return avail; }
-      return null;
-    }).filter(Boolean)
+    (p.chars||['random','random']).map(c => c !== 'random' ? c : resolveRandom()).filter(Boolean)
   );
   // Guarantee frodo-sam is somewhere
   if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0].unshift('frodo-sam');
   charAssignment = charAssignment.map(cs => cs.length ? cs : [Object.keys(CHARS)[0]]);
-
-  const { difficulty: rawDiff, cardPrefs, boons, selectedObjectiveIds } = authLobby.settings || {};
-  const difficulty = rawDiff || 'standard';
-
-  // Enforce: all char-required objectives must be covered by assigned characters
-  const allAssigned = new Set(charAssignment.flat());
-  if (selectedObjectiveIds) {
-    const missing = selectedObjectiveIds
-      .map(id => OBJECTIVES.find(o => o.id === id))
-      .filter(o => o?.requiresChar && !allAssigned.has(o.requiresChar))
-      .map(o => `${CHARS[o.requiresChar]?.name || o.requiresChar} (for "${o.name}")`);
-    if (missing.length > 0) {
-      showToast(`⚠ Missing required characters: ${missing.slice(0,2).join(', ')}${missing.length>2?'…':''}`);
-      return;
-    }
-  }
 
   newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons, selectedObjectiveIds });
   G.roomCode = _lobbyRoomCode;
@@ -1593,29 +1611,31 @@ function renderTopBar() {
 function renderCharList() {
   const el = document.getElementById('char-list');
   el.innerHTML = '';
-  const isMyTurn = G.currentPlayer === myPlayerIdx();
-  // Show ALL players' characters — cooperative game, everyone needs full visibility
-  for (let pi = 0; pi < G.players.length; pi++) {
-    const player = G.players[pi];
-    const isActivePlayer = pi === G.currentPlayer;
-    for (const cid of (player.chars || [])) {
-      const c = CHARS[cid];
-      if (!c) continue;
-      const cs = G.charState?.[cid];
-      if (!cs) continue;
-      const charActions = G.turn?.charActions || {};
-      const left = charActions[cid] ?? player.actionsPerChar ?? 4;
-      const done = G.turn?.doneChars?.includes(cid) || false;
-      const div = document.createElement('div');
-      // Dim chars belonging to other players (not the active turn player)
-      const dimmed = !isActivePlayer ? ' char-other-player' : '';
-      div.className = 'char-card' + (UI.selectedChar===cid?' selected':'') + (done?' char-done':'') + dimmed;
-      div.innerHTML = `<span class="char-dot" style="background:${c.color}"></span><span class="char-name">${c.name}</span>
-        <span class="char-actions-left">${isActivePlayer ? (done ? '✓' : left+'★') : ''}</span>
-        <div class="char-loc">${LOCS[cs.location]?.name||cs.location}</div>`;
-      div.onclick = () => selectChar(cid);
-      el.appendChild(div);
-    }
+  const myIdx = myPlayerIdx();
+  const myPlayer = G.players[myIdx];
+  const isMyTurn = myIdx === G.currentPlayer;
+  const charActions = G.turn?.charActions || {};
+  const doneChars = G.turn?.doneChars || [];
+  for (const cid of (myPlayer.chars || [])) {
+    const c = CHARS[cid];
+    if (!c) continue;
+    const cs = G.charState?.[cid];
+    if (!cs) continue;
+    const left = charActions[cid] ?? myPlayer.actionsPerChar ?? 4;
+    const done = doneChars.includes(cid);
+    const div = document.createElement('div');
+    div.className = 'char-card' + (UI.selectedChar===cid?' selected':'') + (done?' char-done':'');
+    div.innerHTML = `<span class="char-dot" style="background:${c.color}"></span><span class="char-name">${c.name}</span>
+      <span class="char-actions-left">${isMyTurn ? (done ? '✓' : left+'★') : ''}</span>
+      <div class="char-loc">${LOCS[cs.location]?.name||cs.location}</div>`;
+    div.onclick = () => selectChar(cid);
+    el.appendChild(div);
+  }
+  if (!isMyTurn && G.playerIds) {
+    const activeEl = document.createElement('div');
+    activeEl.style.cssText = 'font-size:.75em;color:#706050;margin-top:6px;text-align:center';
+    activeEl.textContent = `${G.players[G.currentPlayer]?.name || 'Other player'}'s turn`;
+    el.appendChild(activeEl);
   }
 }
 
