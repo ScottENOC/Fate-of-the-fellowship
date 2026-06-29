@@ -171,6 +171,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 
 .char-done{opacity:0.5}
 .char-done .char-actions-left{color:#50a850}
+.char-other-player{opacity:0.6;border-left:2px solid #3a2820}
 
 /* ── OBJECTIVES ── */
 .lt-card{border:1px solid #3a2810;border-radius:4px;padding:5px 8px;margin-bottom:4px;font-size:.78em}
@@ -359,7 +360,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
       <!-- Hand -->
       <div>
         <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
-          <span>Hand (<span id="hand-count">0</span>/7)</span>
+          <span><span id="hand-label">Hand</span> (<span id="hand-count">0</span>/7)</span>
           <button onclick="showDiscardPileModal()" style="background:none;border:1px solid #4a3820;color:#806040;font-size:.7em;padding:2px 6px;cursor:pointer;border-radius:3px;font-family:inherit">View Discard</button>
         </div>
         <div class="hand-cards" id="hand-list"></div>
@@ -1590,26 +1591,36 @@ function renderTopBar() {
 }
 
 function renderCharList() {
-  const p = G.players[G.currentPlayer];
   const el = document.getElementById('char-list');
   el.innerHTML = '';
-  for (const cid of p.chars) {
-    const c = CHARS[cid];
-    const cs = G.charState[cid];
-    const left = G.turn.charActions[cid] ?? 4;
-    const done = G.turn.doneChars.includes(cid);
-    const div = document.createElement('div');
-    div.className = 'char-card' + (UI.selectedChar===cid?' selected':'') + (done?' char-done':'');
-    div.innerHTML = `<span class="char-dot" style="background:${c.color}"></span><span class="char-name">${c.name}</span>
-      <span class="char-actions-left">${done ? '✓' : left+'★'}</span>
-      <div class="char-loc">${LOCS[cs.location]?.name||cs.location}</div>`;
-    div.onclick = () => selectChar(cid);
-    el.appendChild(div);
+  const isMyTurn = G.currentPlayer === myPlayerIdx();
+  // Show ALL players' characters — cooperative game, everyone needs full visibility
+  for (let pi = 0; pi < G.players.length; pi++) {
+    const player = G.players[pi];
+    const isActivePlayer = pi === G.currentPlayer;
+    for (const cid of (player.chars || [])) {
+      const c = CHARS[cid];
+      if (!c) continue;
+      const cs = G.charState?.[cid];
+      if (!cs) continue;
+      const charActions = G.turn?.charActions || {};
+      const left = charActions[cid] ?? player.actionsPerChar ?? 4;
+      const done = G.turn?.doneChars?.includes(cid) || false;
+      const div = document.createElement('div');
+      // Dim chars belonging to other players (not the active turn player)
+      const dimmed = !isActivePlayer ? ' char-other-player' : '';
+      div.className = 'char-card' + (UI.selectedChar===cid?' selected':'') + (done?' char-done':'') + dimmed;
+      div.innerHTML = `<span class="char-dot" style="background:${c.color}"></span><span class="char-name">${c.name}</span>
+        <span class="char-actions-left">${isActivePlayer ? (done ? '✓' : left+'★') : ''}</span>
+        <div class="char-loc">${LOCS[cs.location]?.name||cs.location}</div>`;
+      div.onclick = () => selectChar(cid);
+      el.appendChild(div);
+    }
   }
 }
 
 function renderTokens() {
-  const p = G.players[G.currentPlayer];
+  const p = G.players[myPlayerIdx()];
   const el = document.getElementById('token-row');
   el.innerHTML = '';
   for (const [k, s] of Object.entries(SYM)) {
@@ -1625,7 +1636,10 @@ function renderTokens() {
 }
 
 function renderHand() {
-  const p = G.players[G.currentPlayer];
+  const myIdx = myPlayerIdx();
+  const p = G.players[myIdx];
+  const handLabel = document.getElementById('hand-label');
+  if (handLabel) handLabel.textContent = G.playerIds && G.players.length > 1 ? `${p.name}'s Hand` : 'Hand';
   document.getElementById('hand-count').textContent = p.hand.length;
   const el = document.getElementById('hand-list');
   el.innerHTML = '';
