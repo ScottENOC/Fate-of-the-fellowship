@@ -342,9 +342,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <span id="phase-label">Phase: Actions</span>
         <span id="player-label">Player 1</span>
       </div>
-      <div id="nazgul-row">Nazgûl: loading…</div>
       <div id="room-display" class="room-code-display" style="display:none;font-size:.65em;color:#706050;text-align:right;padding:1px 0">Room: <span id="room-code-val"></span></div>
-      <div id="supply-row" style="font-size:.72em;color:#706050;padding:1px 0;display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
 
     <div id="middle">
@@ -383,9 +381,14 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <div class="section-title">Lieutenants</div>
         <div id="lt-list"></div>
       </div>
+      <!-- Game info (scrolled to) -->
+      <div>
+        <div id="nazgul-row" style="font-size:.75em;color:#806040;padding:4px 0">Nazgûl: loading…</div>
+        <div id="supply-row" style="font-size:.72em;color:#706050;padding:1px 0;display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <!-- Log -->
+      <div id="log-area"><div class="section-title" style="margin-bottom:4px">Game Log</div><div id="log-list"></div></div>
     </div>
-
-    <div id="log-area"><div class="section-title" style="margin-bottom:4px">Game Log</div><div id="log-list"></div></div>
     <div style="padding:6px 10px;border-top:1px solid #3a2810;display:flex;gap:6px">
       <button class="btn btn-sm" onclick="saveGame();cloudSave();showToast('💾 Saved')">💾 Save</button>
       <button class="btn btn-sm" id="sync-btn" onclick="syncFromCloud()" style="color:#507050;border-color:#507050">☁ Sync</button>
@@ -1835,17 +1838,25 @@ function renderActions() {
     doneBtn.textContent = isPrimary && isMulti ? 'End Actions →' : `Done with ${CHARS[sc].name}`;
     doneBtn.title = isPrimary && isMulti ? 'Finish your actions with this character; 2nd character acts next' : 'Finish this character\'s actions';
     doneBtn.onclick = () => {
+      let secondaryChar = null;
       if (isPrimary && isMulti) {
         // Allocate secondary char's actions based on how many this char used
         const used = 4 - (t.charActions[sc] || 0);
         const secondaryAlloc = used <= 1 ? 4 : 1;
         for (const id of charIds) {
-          if (id !== sc) t.charActions[id] = secondaryAlloc;
+          if (id !== sc) { t.charActions[id] = secondaryAlloc; secondaryChar = id; }
         }
       }
+      // Zero out this char's remaining actions and mark done
+      t.charActions[sc] = 0;
       endCharActions(sc);
-      UI.selectedChar = null;
       resetUI();
+      // Auto-select the secondary character if there is one
+      if (secondaryChar) {
+        UI.selectedChar = secondaryChar;
+      } else {
+        UI.selectedChar = null;
+      }
       render();
     };
     el.appendChild(doneBtn);
