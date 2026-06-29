@@ -4,7 +4,8 @@
 let G = null; // the live game state
 
 function newGame(cfg) {
-  const { numPlayers, playerNames, difficulty, boons = {} } = cfg;
+  const { numPlayers, playerNames, boons = {} } = cfg;
+  const difficulty = cfg.difficulty || 'standard';
   const plusMatch = difficulty.match(/^legendary\+(\d+)$/);
   const plusLevel = plusMatch ? parseInt(plusMatch[1]) : 0;
   const baseDiff = plusLevel > 0 ? 'legendary' : difficulty;

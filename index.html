@@ -697,6 +697,7 @@ const FIREBASE_DB = 'https://fate-of-the-fellowship-default-rtdb.asia-southeast1
 let _cloudStream = null;
 let _lobbyStream = null;
 let _heartbeatTimer = null;
+let _lobbyPollTimer = null;
 let _lobbyRoomCode = null;
 
 function showToast(msg, ms=2500) {
@@ -1042,7 +1043,8 @@ async function startFromLobby() {
   if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0].unshift('frodo-sam');
   charAssignment = charAssignment.map(cs => cs.length ? cs : [Object.keys(CHARS)[0]]);
 
-  const { difficulty, cardPrefs, boons } = authLobby.settings || {};
+  const { difficulty: rawDiff, cardPrefs, boons } = authLobby.settings || {};
+  const difficulty = rawDiff || 'standard';
   newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons });
   G.roomCode = _lobbyRoomCode;
   G.playerIds = sorted.map(([pid])=>pid);
@@ -1199,10 +1201,22 @@ function startHeartbeat(code) {
   }).catch(()=>{});
   ping();
   _heartbeatTimer = setInterval(ping, 25000);
+
+  // Polling fallback: re-fetch the lobby every 5s in case SSE misses an update
+  _lobbyPollTimer = setInterval(async () => {
+    if (!_lobbyRoomCode || !_localLobby) return;
+    try {
+      const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/lobby.json`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const fresh = await res.json();
+      if (fresh && typeof fresh === 'object') handleLobbyServerLobby(fresh, code);
+    } catch(e) {}
+  }, 5000);
 }
 
 function stopHeartbeat() {
   if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
+  if (_lobbyPollTimer) { clearInterval(_lobbyPollTimer); _lobbyPollTimer = null; }
 }
 
 function resetLegacy() {
@@ -1452,15 +1466,15 @@ function render() {
   if (!G) return;
   if (!G.players?.length || !G.players[G.currentPlayer]) { console.warn('render: invalid G state'); return; }
   autoSave();
-  renderTopBar();
-  renderCharList();
-  renderTokens();
-  renderHand();
-  renderObjectives();
-  renderLieutenants();
-  renderActions();
-  renderLog();
-  renderMap();
+  try { renderTopBar(); } catch(e) { console.error('renderTopBar:', e); }
+  try { renderCharList(); } catch(e) { console.error('renderCharList:', e); }
+  try { renderTokens(); } catch(e) { console.error('renderTokens:', e); }
+  try { renderHand(); } catch(e) { console.error('renderHand:', e); }
+  try { renderObjectives(); } catch(e) { console.error('renderObjectives:', e); }
+  try { renderLieutenants(); } catch(e) { console.error('renderLieutenants:', e); }
+  try { renderActions(); } catch(e) { console.error('renderActions:', e); }
+  try { renderLog(); } catch(e) { console.error('renderLog:', e); }
+  try { renderMap(); } catch(e) { console.error('renderMap:', e); }
   if (G.phase === 'gameover') showGameover();
   // Mouth of Sauron tribute prompt
   if (G?.ui?.pendingMouthTribute) {
