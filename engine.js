@@ -442,7 +442,6 @@ function makeTurn(charIds, actionsEach = 4) {
   for (const id of charIds) charActions[id] = actionsEach;
   return {
     charActions,
-    actionsPool: charIds.length > 1 ? 5 : actionsEach,
     doneChars: [],
     primaryChar: null,
     eomerBonusTravelLeft: charIds.includes('eomer') ? 1 : 0,
@@ -467,18 +466,15 @@ function spendAction(charId) {
 
   if (multiChar) {
     if (!t.primaryChar) {
+      // First action of the turn — this char gets 4, all others drop to 1
       t.primaryChar = charId;
+      for (const id of charIds) {
+        if (id !== charId) t.charActions[id] = 1;
+      }
     } else if (t.primaryChar !== charId && !t.doneChars.includes(t.primaryChar)) {
       // First action on secondary — lock primary out
       t.doneChars.push(t.primaryChar);
       t.charActions[t.primaryChar] = 0;
-    }
-    t.actionsPool = Math.max(0, (t.actionsPool || 0) - 1);
-    // Keep secondary's displayed actions in sync with remaining pool (max 4)
-    for (const id of charIds) {
-      if (id !== t.primaryChar && !t.doneChars.includes(id)) {
-        t.charActions[id] = Math.min(t.actionsPool, 4);
-      }
     }
   }
 
