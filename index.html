@@ -2994,13 +2994,22 @@ function clickLocation(locId) {
       // Ask about stealth spend
       const p = G.players[G.currentPlayer];
       const hasS = (p.tokens.stealth||0) > 0;
+      const doSearch = (spend) => {
+        const r = performSearch(spend);
+        resetUI(); render();
+        if (spend && r.rolls.length === 0) {
+          showModal('Search Avoided', 'Spent 1 ★ — no search roll. Frodo slips by undetected.');
+        } else {
+          showDiceResult('Search Roll', r.rolls, 'search');
+        }
+      };
       showModal('Search Roll',
         `Frodo travels to ${LOCS[locId].name}.<br>${hasS ? 'Spend 1 ★ to avoid the search roll?' : 'No ★ available — rolling search.'}`,
         hasS ? [
-          { label:`Spend ★ (${p.tokens.stealth} left)`, action:()=>{ performSearch(true); resetUI(); render(); } },
-          { label:'Roll Search', action:()=>{ const r=performSearch(false); resetUI(); render(); if(r.rolls.length) showDiceResult('Search Roll',r.rolls,'search'); } },
+          { label:`Spend ★ (${p.tokens.stealth} left)`, action:()=> doSearch(true) },
+          { label:'Roll Search', action:()=> doSearch(false) },
         ] : [
-          { label:'Roll Search', action:()=>{ const r=performSearch(false); resetUI(); render(); if(r.rolls.length) showDiceResult('Search Roll',r.rolls,'search'); } },
+          { label:'Roll Search', action:()=> doSearch(false) },
         ]
       );
     } else {
@@ -3694,7 +3703,7 @@ const DICE_FACE_LABELS = {
 
 function showDiceResult(title, rolls, type) {
   const html = rolls.map(r=>`<div style="margin:2px 0">🎲 <strong>${r}</strong> — ${DICE_FACE_LABELS[r]||r}</div>`).join('');
-  showModal(title, html || 'No dice rolled.');
+  showModal(title, html || 'No Nazgûl or shadow troops nearby — Frodo slips by undetected.');
 }
 
 function showGameover() {

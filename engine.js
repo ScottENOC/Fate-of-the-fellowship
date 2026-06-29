@@ -443,6 +443,7 @@ function makeTurn(charIds, actionsEach = 4) {
   return {
     charActions,
     doneChars: [],
+    primaryChar: null,
     eomerBonusTravelLeft: charIds.includes('eomer') ? 1 : 0,
     eomerBonusForfeited: false,
   };
@@ -459,10 +460,24 @@ function canAct(charId) {
 }
 
 function spendAction(charId) {
-  G.turn.charActions[charId] = Math.max(0, (G.turn.charActions[charId] || 0) - 1);
+  const t = G.turn;
+  if (!t.primaryChar) {
+    // First action of the turn — this char is primary, all others get 1 action
+    t.primaryChar = charId;
+    for (const id of Object.keys(t.charActions)) {
+      if (id !== charId) t.charActions[id] = 1;
+    }
+  } else if (t.primaryChar !== charId) {
+    // Switching to secondary — lock primary char out
+    if (!t.doneChars.includes(t.primaryChar)) {
+      t.doneChars.push(t.primaryChar);
+      t.charActions[t.primaryChar] = 0;
+    }
+  }
+  t.charActions[charId] = Math.max(0, (t.charActions[charId] || 0) - 1);
   // Forfeit Éomer's bonus travel once any other character acts
-  if (charId !== 'eomer' && G.turn.eomerBonusTravelLeft > 0) {
-    G.turn.eomerBonusForfeited = true;
+  if (charId !== 'eomer' && t.eomerBonusTravelLeft > 0) {
+    t.eomerBonusForfeited = true;
   }
 }
 
