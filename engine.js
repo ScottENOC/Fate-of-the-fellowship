@@ -456,10 +456,11 @@ function canAct(charId) {
   if (!G.charState[charId].alive) return false;
   if (charId === 'boromir' && G.boromirRetired) return false;
   const t = G.turn;
-  if (t.doneChars.includes(charId)) return false;
+  if (!t) return false;
+  if (t.doneChars?.includes(charId)) return false;
   // Block secondary char until primary has clicked End Actions (is in doneChars)
-  if (t.primaryChar && t.primaryChar !== charId && !t.doneChars.includes(t.primaryChar)) return false;
-  return (t.charActions[charId] || 0) > 0;
+  if (t.primaryChar && t.primaryChar !== charId && !t.doneChars?.includes(t.primaryChar)) return false;
+  return (t.charActions?.[charId] || 0) > 0;
 }
 
 function spendAction(charId) {

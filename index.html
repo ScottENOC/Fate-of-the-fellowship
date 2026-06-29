@@ -1824,7 +1824,7 @@ function renderActions() {
 
   // End Actions / Done button
   if (!isDone) {
-    const t = G.turn;
+    const t = G.turn || {};
     const charIds = Object.keys(t.charActions || {});
     const isMulti = charIds.length > 1;
     const isPrimary = !t.primaryChar || t.primaryChar === sc;
