@@ -1822,14 +1822,31 @@ function renderActions() {
     el.appendChild(btn);
   }
 
-  // "Done with [char]" button — ends this character's actions, keeps other chars available
+  // End Actions / Done button
   if (!isDone) {
+    const t = G.turn;
+    const charIds = Object.keys(t.charActions || {});
+    const isMulti = charIds.length > 1;
+    const isPrimary = !t.primaryChar || t.primaryChar === sc;
     const doneBtn = document.createElement('button');
     doneBtn.className = 'action-btn btn-danger';
     doneBtn.style.gridColumn = '1 / -1';
-    doneBtn.textContent = `Done with ${CHARS[sc].name}`;
-    doneBtn.title = 'Finish this character\'s actions; other characters can still act';
-    doneBtn.onclick = () => { endCharActions(sc); UI.selectedChar = null; resetUI(); render(); };
+    doneBtn.textContent = isPrimary && isMulti ? 'End Actions →' : `Done with ${CHARS[sc].name}`;
+    doneBtn.title = isPrimary && isMulti ? 'Finish your actions with this character; 2nd character acts next' : 'Finish this character\'s actions';
+    doneBtn.onclick = () => {
+      if (isPrimary && isMulti) {
+        // Allocate secondary char's actions based on how many this char used
+        const used = 4 - (t.charActions[sc] || 0);
+        const secondaryAlloc = used <= 1 ? 4 : 1;
+        for (const id of charIds) {
+          if (id !== sc) t.charActions[id] = secondaryAlloc;
+        }
+      }
+      endCharActions(sc);
+      UI.selectedChar = null;
+      resetUI();
+      render();
+    };
     el.appendChild(doneBtn);
   }
 }

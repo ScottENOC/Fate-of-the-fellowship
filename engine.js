@@ -455,29 +455,16 @@ function canAct(charId) {
   if (!p.chars.includes(charId)) return false;
   if (!G.charState[charId].alive) return false;
   if (charId === 'boromir' && G.boromirRetired) return false;
-  if (G.turn.doneChars.includes(charId)) return false;
-  return (G.turn.charActions[charId] || 0) > 0;
+  const t = G.turn;
+  if (t.doneChars.includes(charId)) return false;
+  // Block secondary char until primary has clicked End Actions (is in doneChars)
+  if (t.primaryChar && t.primaryChar !== charId && !t.doneChars.includes(t.primaryChar)) return false;
+  return (t.charActions[charId] || 0) > 0;
 }
 
 function spendAction(charId) {
   const t = G.turn;
-  const charIds = Object.keys(t.charActions);
-  const multiChar = charIds.length > 1;
-
-  if (multiChar) {
-    if (!t.primaryChar) {
-      // First action of the turn — this char gets 4, all others drop to 1
-      t.primaryChar = charId;
-      for (const id of charIds) {
-        if (id !== charId) t.charActions[id] = 1;
-      }
-    } else if (t.primaryChar !== charId && !t.doneChars.includes(t.primaryChar)) {
-      // First action on secondary — lock primary out
-      t.doneChars.push(t.primaryChar);
-      t.charActions[t.primaryChar] = 0;
-    }
-  }
-
+  if (!t.primaryChar) t.primaryChar = charId;
   t.charActions[charId] = Math.max(0, (t.charActions[charId] || 0) - 1);
   // Forfeit Éomer's bonus travel once any other character acts
   if (charId !== 'eomer' && t.eomerBonusTravelLeft > 0) {
