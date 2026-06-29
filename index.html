@@ -1828,36 +1828,39 @@ function renderActions() {
 
   // End Actions / Done button
   if (!isDone) {
-    const t = G.turn || {};
-    const charIds = Object.keys(t.charActions || {});
-    const isMulti = charIds.length > 1;
-    const isPrimary = !t.primaryChar || t.primaryChar === sc;
+    const myCharIds = Object.keys(G.turn?.charActions || {});
+    const isMulti = myCharIds.length > 1;
+    const isPrimary = !G.turn?.primaryChar || G.turn?.primaryChar === sc;
     const doneBtn = document.createElement('button');
     doneBtn.className = 'action-btn btn-danger';
     doneBtn.style.gridColumn = '1 / -1';
     doneBtn.textContent = isPrimary && isMulti ? 'End Actions →' : `Done with ${CHARS[sc].name}`;
     doneBtn.title = isPrimary && isMulti ? 'Finish your actions with this character; 2nd character acts next' : 'Finish this character\'s actions';
     doneBtn.onclick = () => {
+      const turn = G.turn;
+      if (!turn) return;
       let secondaryChar = null;
+      let secondaryAlloc = 0;
       if (isPrimary && isMulti) {
-        // Allocate secondary char's actions based on how many this char used
-        const used = 4 - (t.charActions[sc] || 0);
-        const secondaryAlloc = used <= 1 ? 4 : 1;
-        for (const id of charIds) {
-          if (id !== sc) { t.charActions[id] = secondaryAlloc; secondaryChar = id; }
+        const used = 4 - (turn.charActions[sc] || 0);
+        secondaryAlloc = used <= 1 ? 4 : 1;
+        turn.primaryChar = sc;
+        for (const id of Object.keys(turn.charActions)) {
+          if (id !== sc) { turn.charActions[id] = secondaryAlloc; secondaryChar = id; }
         }
       }
-      // Zero out this char's remaining actions and mark done
-      t.charActions[sc] = 0;
+      turn.charActions[sc] = 0;
       endCharActions(sc);
       resetUI();
-      // Auto-select the secondary character if there is one
-      if (secondaryChar) {
-        UI.selectedChar = secondaryChar;
-      } else {
-        UI.selectedChar = null;
-      }
+      UI.selectedChar = secondaryChar;
       render();
+      if (secondaryChar) {
+        const p1 = CHARS[sc]?.name || sc;
+        const p2 = CHARS[secondaryChar]?.name || secondaryChar;
+        showModal(`${p1}'s actions done`,
+          `${p2} now has <strong>${secondaryAlloc}</strong> action${secondaryAlloc !== 1 ? 's' : ''}.`,
+          [{ label: `Act with ${p2}`, action: closeModal }]);
+      }
     };
     el.appendChild(doneBtn);
   }
