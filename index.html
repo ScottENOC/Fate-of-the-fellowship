@@ -161,7 +161,8 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 #modal-btns{display:flex;gap:8px;flex-wrap:wrap}
 
 /* ── TOOLTIP ── */
-#tooltip{position:fixed;background:rgba(14,10,5,0.96);border:1px solid #6a5020;border-radius:6px;padding:9px 13px;font-size:.81em;pointer-events:none;z-index:50;max-width:310px;min-width:190px;display:none;line-height:1.55;box-shadow:0 4px 18px rgba(0,0,0,0.75)}
+#tooltip{position:fixed;background:rgba(14,10,5,0.96);border:1px solid #6a5020;border-radius:6px;padding:9px 13px;font-size:.81em;pointer-events:auto;z-index:50;max-width:310px;min-width:190px;display:none;line-height:1.55;box-shadow:0 4px 18px rgba(0,0,0,0.75)}
+#tooltip-close{float:right;margin:-2px -4px 2px 8px;background:none;border:none;color:#706050;font-size:1em;cursor:pointer;padding:0;line-height:1}
 #tooltip hr{border:none;border-top:1px solid #3a2810;margin:5px 0}
 #tooltip .tt-title{font-size:1.05em;color:#d4b870;font-weight:bold}
 #tooltip .tt-sub{color:#706050;font-size:.9em}
@@ -2431,7 +2432,8 @@ function svgEl(tag, attrs) {
 // ── TOOLTIP ───────────────────────────────────────────────────────────────────
 function showTooltip(e, locId) {
   const tt = document.getElementById('tooltip');
-  tt.innerHTML = getLocationTooltipHTML(locId);
+  tt.innerHTML = `<button id="tooltip-close" onclick="hideTooltip()">✕</button>` + getLocationTooltipHTML(locId);
+  tt.style.position = 'fixed';
   tt.style.display = 'block';
   placeTooltip(e);
 }
@@ -3002,6 +3004,7 @@ function showBoromirReplacementModal(candidates, playerIdx) {
 
 function clickLocation(locId) {
   if (isPanDrag) { isPanDrag = false; return; } // suppress click after a drag
+  hideTooltip();
   if (!UI.pendingAction) return;
 
   if (UI.pendingAction === 'travel') {
