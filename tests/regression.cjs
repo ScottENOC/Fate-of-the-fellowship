@@ -167,6 +167,16 @@ test('save migration adds the roguelike run-record marker', () => {
   vm.runInContext('delete G.rogueRunRecorded; __rr = migrateGameState(G)', ctx);
   assert.equal(evalIn(ctx, '__rr.rogueRunRecorded'), false);
 });
+
+test('compact iPhone drawer and touch Nazgul wiring are present', () => {
+  assert.ok(indexSource.includes('grid-template-columns:repeat(auto-fit,minmax(118px,1fr))'));
+  assert.ok(indexSource.includes('grid-template-columns:repeat(3,minmax(0,1fr))'));
+  assert.ok(indexSource.includes('function showNazgulDistribution()'));
+  assert.ok(indexSource.includes("g.onclick = e => { e.stopPropagation(); showNazgulDistribution(); };"));
+  assert.ok(!indexSource.includes('id="nazgul-row"'));
+  assert.ok(indexSource.includes('#action-hint{min-height:0!important;margin-bottom:1px!important;line-height:1.15}'));
+});
+
 test('iPhone map-first UI wiring is present', () => {
   assert.ok(indexSource.includes('id="mobile-status-hud"'));
   assert.ok(indexSource.includes('height:min(52dvh,480px)'));
