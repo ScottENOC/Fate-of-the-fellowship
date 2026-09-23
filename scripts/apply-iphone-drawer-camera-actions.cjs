@@ -83,3 +83,14 @@ rep(
 );
 
 fs.writeFileSync(p, s);
+
+// Update the regression contract from the old drawer height to the new compact drawer,
+// and assert the occlusion-aware camera logic is wired in.
+const tp = 'tests/regression.cjs';
+let t = fs.readFileSync(tp, 'utf8');
+if (!t.includes("assert.ok(indexSource.includes('height:min(68dvh,620px)'))")) throw new Error('missing old drawer regression assertion');
+t = t.replace(
+  "assert.ok(indexSource.includes('height:min(68dvh,620px)'))",
+  "assert.ok(indexSource.includes('height:min(52dvh,480px)'));\n  assert.ok(indexSource.includes('function visibleMapViewportHeight(panel)'));\n  assert.ok(indexSource.includes(\"h -= sidebar.getBoundingClientRect().height;\"));\n  assert.ok(indexSource.includes(\"if ((a.key === 'muster' || a.key === 'capture') && !a.ok) continue;\"));\n  assert.ok(indexSource.includes('id=\"action-footer\"'))"
+);
+fs.writeFileSync(tp, t);
