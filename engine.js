@@ -2,6 +2,54 @@
 
 // ── GAME STATE ────────────────────────────────────────────────────────────────
 let G = null; // the live game state
+const GAME_STATE_VERSION = 2;
+
+// Upgrade older local/cloud saves in place. Migrations are intentionally
+// additive: old games keep their exact board/deck state while newly-required
+// fields receive safe defaults.
+function migrateGameState(state) {
+  if (!state || typeof state !== 'object') throw new Error('Invalid game state');
+  const s = state;
+  const fromVersion = Number.isInteger(s.saveVersion) ? s.saveVersion : 0;
+  if (fromVersion > GAME_STATE_VERSION) throw new Error(`Save is from newer game version ${fromVersion}`);
+
+  if (!Array.isArray(s.players)) s.players = [];
+  for (const p of s.players) {
+    p.hand = Array.isArray(p.hand) ? p.hand : [];
+    p.chars = Array.isArray(p.chars) ? p.chars : [];
+    p.tokens = Object.assign({ friendship:0, valor:0, stealth:0, resistance:0 }, p.tokens || {});
+    if (!Number.isFinite(p.actionsPerChar)) p.actionsPerChar = p.chars.length === 1 ? 5 : 4;
+  }
+  s.charState = s.charState || {};
+  s.locState = s.locState || {};
+  s.playerDeck = Array.isArray(s.playerDeck) ? s.playerDeck : [];
+  s.playerDiscard = Array.isArray(s.playerDiscard) ? s.playerDiscard : [];
+  s.shadowDeck = Array.isArray(s.shadowDeck) ? s.shadowDeck : [];
+  s.shadowDiscard = Array.isArray(s.shadowDiscard) ? s.shadowDiscard : [];
+  s.objectives = Array.isArray(s.objectives) ? s.objectives : [];
+  s.capturedStrongholds = Array.isArray(s.capturedStrongholds) ? s.capturedStrongholds : [];
+  s.extraHavens = Array.isArray(s.extraHavens) ? s.extraHavens : [];
+  s.skiesBuffer = Array.isArray(s.skiesBuffer) ? s.skiesBuffer : [];
+  s.shadowLieutenants = Array.isArray(s.shadowLieutenants) ? s.shadowLieutenants : [];
+  s.log = Array.isArray(s.log) ? s.log : [];
+  s.freeLtBoons = s.freeLtBoons || {};
+  s.freeLtState = s.freeLtState || {};
+  s.legacySetup = Object.assign({ extraCharacters:[], startTokens:[], deployTroops:[] }, s.legacySetup || {});
+  s.legacyReshufflesLeft = Math.max(0, Number(s.legacyReshufflesLeft) || 0);
+  s.ui = Object.assign({ selectedChar:null, pendingAction:null, validTargets:[], ignoreNextOrder:false, freeSearchThisTurn:false }, s.ui || {});
+  s.turn = s.turn || makeTurn(s.players[s.currentPlayer || 0]?.chars || [], s.players[s.currentPlayer || 0]?.actionsPerChar || 4);
+  s.turn.charActions = s.turn.charActions || {};
+  s.turn.actionsUsed = s.turn.actionsUsed || {};
+  s.turn.doneChars = Array.isArray(s.turn.doneChars) ? s.turn.doneChars : [];
+  if (s.turn.primaryChar === undefined) s.turn.primaryChar = null;
+  if (!Number.isFinite(s.plusLevel)) {
+    const m = String(s.difficulty || '').match(/^legendary\+(\d+)$/);
+    s.plusLevel = m ? parseInt(m[1]) : 0;
+  }
+  if (!Number.isFinite(s.savedAt)) s.savedAt = 0;
+  s.saveVersion = GAME_STATE_VERSION;
+  return s;
+}
 
 function newGame(cfg) {
   const { numPlayers, playerNames, boons = {}, legacySetup = {} } = cfg;
@@ -173,6 +221,7 @@ function newGame(cfg) {
   }
 
   G = {
+    saveVersion: GAME_STATE_VERSION,
     players,
     charState,
     locState,
