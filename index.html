@@ -155,7 +155,10 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   .char-card .char-name{font-size:.8em}
   .char-card .char-loc{font-size:.68em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:22px}
   .char-card .char-actions-left{top:6px;right:7px}
-  .card-item{padding:9px 10px}
+  .hand-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:4px}
+  .card-item{padding:6px 8px;min-height:40px;font-size:.74em;justify-content:flex-start;gap:6px;line-height:1.15;overflow:hidden}
+  .card-item .card-sym{flex:0 0 auto}
+  .card-item{white-space:nowrap;text-overflow:ellipsis}
   .token-chip{padding:8px 10px}
 }
 
