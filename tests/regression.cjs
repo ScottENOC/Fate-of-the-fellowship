@@ -169,7 +169,11 @@ test('save migration adds the roguelike run-record marker', () => {
 });
 test('iPhone map-first UI wiring is present', () => {
   assert.ok(indexSource.includes('id="mobile-status-hud"'));
-  assert.ok(indexSource.includes('height:min(68dvh,620px)'));
+  assert.ok(indexSource.includes('height:min(52dvh,480px)'));
+  assert.ok(indexSource.includes('function visibleMapViewportHeight(panel)'));
+  assert.ok(indexSource.includes("h -= sidebar.getBoundingClientRect().height;"));
+  assert.ok(indexSource.includes("if ((a.key === 'muster' || a.key === 'capture') && !a.ok) continue;"));
+  assert.ok(indexSource.includes('id="action-footer"'));
   assert.ok(indexSource.includes('env(safe-area-inset-bottom)'));
   assert.ok(indexSource.includes('function showLocationDetails(locId)'));
   assert.ok(indexSource.includes('function explainUnavailableAction(label, tip)'));
