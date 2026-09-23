@@ -44,9 +44,9 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 .toggle-row:last-child{margin-bottom:0}
 .toggle-row input[type=checkbox]{accent-color:#c8a050;width:14px;height:14px;cursor:pointer}
 .toggle-row:hover{color:#f0e0a0}
-#map-wrap{position:relative;width:100%;height:100%;transform-origin:0 0;cursor:grab;will-change:transform}
+#map-wrap{position:absolute;left:0;top:0;transform-origin:0 0;cursor:grab;will-change:transform}
 #map-wrap.dragging{cursor:grabbing}
-#map-img{display:block;width:100%;height:100%;object-fit:contain;object-position:top left;user-select:none;-webkit-user-drag:none}
+#map-img{display:block;width:100%;height:100%;object-fit:fill;user-select:none;-webkit-user-drag:none}
 #map-svg{position:absolute;top:0;left:0;pointer-events:none}
 #map-svg.interactive{pointer-events:all}
 
@@ -1688,7 +1688,7 @@ function devTools() {
 }
 
 // ── MAP PAN / ZOOM + PINCH ────────────────────────────────────────────────────
-const mapView = { zoom: 1, panX: 0, panY: 0 };
+const mapView = { zoom: 1, panX: 0, panY: 0, baseWidth: 0, baseHeight: 0, viewportWidth: 0, viewportHeight: 0 };
 let mapDrag = null;
 let isPanDrag = false;
 
@@ -1697,19 +1697,30 @@ function applyMapTransform() {
   if (wrap) wrap.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.zoom})`;
 }
 
+function centerMapAtBase() {
+  const pw = mapView.viewportWidth || document.getElementById('map-panel')?.clientWidth || 0;
+  const ph = mapView.viewportHeight || document.getElementById('map-panel')?.clientHeight || 0;
+  mapView.panX = (pw - mapView.baseWidth * mapView.zoom) / 2;
+  mapView.panY = (ph - mapView.baseHeight * mapView.zoom) / 2;
+}
+
 function clampPan() {
   const panel = document.getElementById('map-panel');
   if (!panel) return;
-  const pw = panel.offsetWidth, ph = panel.offsetHeight;
-  const wrap = document.getElementById('map-wrap');
-  const ww = (wrap.offsetWidth || pw) * mapView.zoom;
-  const wh = (wrap.offsetHeight || ph) * mapView.zoom;
-  mapView.panX = Math.min(pw * 0.5, Math.max(pw - ww - pw * 0.5, mapView.panX));
-  mapView.panY = Math.min(ph * 0.5, Math.max(ph - wh - ph * 0.5, mapView.panY));
+  const pw = panel.clientWidth, ph = panel.clientHeight;
+  const baseW = mapView.baseWidth || document.getElementById('map-wrap')?.offsetWidth || pw;
+  const baseH = mapView.baseHeight || document.getElementById('map-wrap')?.offsetHeight || ph;
+  const scaledW = baseW * mapView.zoom;
+  const scaledH = baseH * mapView.zoom;
+  // Camera bounds are exactly the map edges: never reveal space outside the map.
+  const minX = Math.min(0, pw - scaledW);
+  const minY = Math.min(0, ph - scaledH);
+  mapView.panX = Math.max(minX, Math.min(0, mapView.panX));
+  mapView.panY = Math.max(minY, Math.min(0, mapView.panY));
 }
 
 function zoomAtPoint(factor, cx, cy) {
-  const newZoom = Math.max(0.5, Math.min(8, mapView.zoom * factor));
+  const newZoom = Math.max(1, Math.min(8, mapView.zoom * factor));
   const scale = newZoom / mapView.zoom;
   mapView.panX = cx - scale * (cx - mapView.panX);
   mapView.panY = cy - scale * (cy - mapView.panY);
@@ -1752,7 +1763,7 @@ function initMapPanZoom() {
   panel.addEventListener('dblclick', e => {
     // only reset if on background (not on a location circle)
     if (e.target.closest('g[data-loc]') || e.target.closest('.char-g')) return;
-    mapView.zoom = 1; mapView.panX = 0; mapView.panY = 0;
+    mapView.zoom = 1; centerMapAtBase(); clampPan();
     applyMapTransform();
   });
 
@@ -1799,20 +1810,45 @@ function initMapPanZoom() {
 
 // Resize SVG to exactly match the displayed image area (accounts for object-fit:contain letterboxing)
 function alignSvgToImage() {
-  const img  = document.getElementById('map-img');
-  const svg  = document.getElementById('map-svg');
+  const img = document.getElementById('map-img');
+  const svg = document.getElementById('map-svg');
   const wrap = document.getElementById('map-wrap');
-  const wW = wrap.offsetWidth, wH = wrap.offsetHeight;
-  const iW = img.naturalWidth  || 2230;
+  const panel = document.getElementById('map-panel');
+  if (!img || !svg || !wrap || !panel) return;
+
+  const pw = panel.clientWidth, ph = panel.clientHeight;
+  if (!pw || !ph) return;
+
+  // Preserve the point currently under the viewport centre across resizes/orientation changes.
+  let centreX = 0.5, centreY = 0.5;
+  if (mapView.baseWidth > 0 && mapView.baseHeight > 0 && mapView.viewportWidth > 0 && mapView.viewportHeight > 0) {
+    centreX = (mapView.viewportWidth / 2 - mapView.panX) / (mapView.baseWidth * mapView.zoom);
+    centreY = (mapView.viewportHeight / 2 - mapView.panY) / (mapView.baseHeight * mapView.zoom);
+  }
+
+  const iW = img.naturalWidth || 2230;
   const iH = img.naturalHeight || 2260;
-  const iAspect = iW / iH, wAspect = wW / wH;
-  let dispW, dispH;
-  if (iAspect > wAspect) { dispW = wW; dispH = wW / iAspect; }
-  else                   { dispH = wH; dispW = wH * iAspect; }
-  svg.style.width  = dispW + 'px';
-  svg.style.height = dispH + 'px';
-  svg.style.top    = '0px';
-  svg.style.left   = '0px';
+  const coverScale = Math.max(pw / iW, ph / iH);
+  const dispW = iW * coverScale;
+  const dispH = iH * coverScale;
+
+  wrap.style.width = dispW + 'px';
+  wrap.style.height = dispH + 'px';
+  img.style.width = '100%';
+  img.style.height = '100%';
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+  svg.style.top = '0px';
+  svg.style.left = '0px';
+
+  mapView.baseWidth = dispW;
+  mapView.baseHeight = dispH;
+  mapView.viewportWidth = pw;
+  mapView.viewportHeight = ph;
+  mapView.panX = pw / 2 - centreX * dispW * mapView.zoom;
+  mapView.panY = ph / 2 - centreY * dispH * mapView.zoom;
+  clampPan();
+  applyMapTransform();
 }
 window.addEventListener('resize', () => { if (G) { alignSvgToImage(); render(); } });
 
