@@ -105,10 +105,12 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 .log-entry.log-new{color:#c8a050}
 
 /* ── MENU TOGGLE BUTTON (floats on map) ── */
-#menu-toggle-btn{position:absolute;bottom:10px;left:10px;z-index:20;background:rgba(20,15,8,.88);border:1px solid #4a3820;color:#c8a050;padding:5px 13px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:.78em;transition:all .15s}
-#menu-toggle-btn:hover{border-color:#c8a050;background:rgba(30,22,10,.97)}
+#menu-toggle-btn{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);z-index:46;background:rgba(20,15,8,.42);border:1px solid rgba(120,92,48,.55);color:#d7c28e;width:36px;height:24px;border-radius:12px;cursor:pointer;font-family:inherit;font-size:.82em;line-height:1;transition:bottom .18s ease,background .15s}
+#menu-toggle-btn:hover{background:rgba(30,22,10,.68);border-color:#c8a050}
+#menu-toggle-btn.drawer-open{bottom:min(68dvh,620px);border-radius:10px 10px 0 0}
 #mobile-status-hud{display:none}
 #mobile-action-sheet{display:none}
+#mobile-utility-menu-btn{display:none}
 .mobile-quick-btn{background:rgba(26,21,16,.97);border:1px solid #6a5020;color:#d4c4a0;border-radius:18px;min-height:44px;padding:8px 13px;font-family:inherit;font-size:.78em;white-space:nowrap;touch-action:manipulation}
 .mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
 .mobile-quick-btn.more{border-color:#806040}
@@ -126,20 +128,22 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   #sidebar.menu-hidden{display:none}
   #middle{padding-bottom:12px}
   #log-area{display:none}
-  #top-bar{padding:8px 12px;gap:4px}
-  .track-row{font-size:.8em}
-  .track-bar{height:9px}
+  #top-bar{display:none}
   #nazgul-row,#supply-row{font-size:.7em}
   .setup-card{width:calc(100vw - 32px);max-width:460px}
   #toast{bottom:calc(88px + env(safe-area-inset-bottom));max-width:calc(100vw - 24px);white-space:normal;text-align:center}
-  #menu-toggle-btn{top:calc(8px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));bottom:auto;min-width:44px;min-height:44px;padding:8px 12px;border-radius:22px}
+  #menu-toggle-btn{position:fixed;top:auto;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));min-width:0;min-height:0;padding:0;border-radius:12px}
+  #menu-toggle-btn.drawer-open{bottom:min(calc(68dvh + env(safe-area-inset-bottom)),calc(620px + env(safe-area-inset-bottom)))}
   #map-toggles{top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right))}
   #map-toggles-btn{width:44px;height:44px;border-radius:22px;font-size:18px}
   #map-toggles-menu{top:50px}
-  #mobile-status-hud{display:flex;position:absolute;z-index:17;top:calc(60px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);align-items:center;gap:8px;background:rgba(14,12,8,.92);border:1px solid #4a3820;border-radius:18px;padding:7px 11px;font-size:.72em;color:#c8b080;box-shadow:0 3px 14px rgba(0,0,0,.45);backdrop-filter:blur(6px);max-width:calc(100vw - 110px);white-space:nowrap}
+  #mobile-status-hud{display:flex;position:absolute;z-index:17;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);align-items:center;gap:8px;background:rgba(14,12,8,.24);border:1px solid rgba(106,80,32,.3);border-radius:18px;padding:6px 10px;font-size:.72em;color:#c8b080;box-shadow:0 2px 8px rgba(0,0,0,.16);backdrop-filter:blur(2px);max-width:calc(100vw - 96px);white-space:nowrap}
   #mobile-status-hud strong{color:#ead8a8}
   #mobile-action-sheet{display:flex;position:absolute;left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));bottom:calc(8px + env(safe-area-inset-bottom));z-index:18;background:rgba(14,12,8,.95);border:1px solid #4a3820;border-radius:14px;padding:8px;gap:6px;align-items:center;overflow-x:auto;box-shadow:0 4px 18px rgba(0,0,0,.6);backdrop-filter:blur(7px);scrollbar-width:none}
   #mobile-action-sheet::-webkit-scrollbar{display:none}
+  #utility-bar{padding:4px 8px calc(4px + env(safe-area-inset-bottom));border-top:none;background:transparent;position:absolute;right:8px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:19;pointer-events:none}
+  #utility-bar .desktop-utility-btn{display:none}
+  #mobile-utility-menu-btn{display:block;pointer-events:auto;min-height:32px;padding:5px 10px;border-radius:14px;background:rgba(20,15,8,.4);border:1px solid rgba(106,80,32,.55);color:#c8b080;font-family:inherit;font-size:.72em}
   .btn-sm,.action-btn,.char-card,.card-item,.token-chip{min-height:44px}
   .action-btn{padding:9px 6px}
   .char-card{padding:9px 10px}
@@ -323,7 +327,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 <!-- ── GAME SCREEN ─────────────────────────────────────────── -->
 <div id="game">
   <div id="map-panel">
-    <button id="menu-toggle-btn" onclick="toggleSidebar()">☰ Menu</button>
+    <button id="menu-toggle-btn" onclick="toggleSidebar()" aria-label="Open game drawer">▴</button>
     <div id="mobile-status-hud" aria-live="polite"></div>
     <div id="mobile-action-sheet"><div class="mobile-task">Tap a character to show actions.</div></div>
     <div id="map-wrap">
@@ -419,12 +423,13 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
       <!-- Log -->
       <div id="log-area"><div class="section-title" style="margin-bottom:4px">Game Log</div><div id="log-list"></div></div>
     </div>
-    <div style="padding:6px 10px;border-top:1px solid #3a2810;display:flex;gap:6px">
-      <button class="btn btn-sm" onclick="saveGame();cloudSave();showToast('💾 Saved')">💾 Save</button>
-      <button class="btn btn-sm" id="sync-btn" onclick="syncFromCloud()" style="color:#507050;border-color:#507050">☁ Sync</button>
-      <button class="btn btn-sm" style="color:#906040;border-color:#906040" onclick="if(confirm('Return to setup? Unsaved progress will be lost.'))location.reload()">↩ Menu</button>
-      <button class="btn btn-sm" onclick="showCampaignChronicle()">📜</button>
-      <button class="btn btn-sm" style="color:#507050;border-color:#507050;margin-left:auto" onclick="devTools()">🔧</button>
+    <div id="utility-bar" style="padding:6px 10px;border-top:1px solid #3a2810;display:flex;gap:6px">
+      <button class="btn btn-sm desktop-utility-btn" onclick="saveGame();cloudSave();showToast('💾 Saved')">💾 Save</button>
+      <button class="btn btn-sm desktop-utility-btn" id="sync-btn" onclick="syncFromCloud()" style="color:#507050;border-color:#507050">☁ Sync</button>
+      <button class="btn btn-sm desktop-utility-btn" style="color:#906040;border-color:#906040" onclick="if(confirm('Return to setup? Unsaved progress will be lost.'))location.reload()">↩ Menu</button>
+      <button class="btn btn-sm desktop-utility-btn" onclick="showCampaignChronicle()">📜</button>
+      <button class="btn btn-sm desktop-utility-btn" style="color:#507050;border-color:#507050;margin-left:auto" onclick="devTools()">🔧</button>
+      <button id="mobile-utility-menu-btn" onclick="showUtilityMenu()">Menu</button>
     </div>
   </div>
 </div>
@@ -988,8 +993,14 @@ let _localSaveTimer = null;
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
   const btn = document.getElementById('menu-toggle-btn');
-  const nowHidden = sidebar.classList.toggle('menu-hidden');
-  btn.textContent = nowHidden ? '☰ Show Menu' : '☰ Hide Menu';
+  if (!sidebar) return;
+  const opening = sidebar.classList.contains('menu-hidden');
+  sidebar.classList.toggle('menu-hidden', !opening);
+  if (btn) {
+    btn.textContent = opening ? '▾' : '▴';
+    btn.classList.toggle('drawer-open', opening);
+    btn.setAttribute('aria-label', opening ? 'Close game drawer' : 'Open game drawer');
+  }
 }
 
 function autoSave() {
@@ -1642,6 +1653,17 @@ function grantTestLP(n) {
   localStorage.setItem(LP_KEY, cur + n);
   document.getElementById('lp-total').textContent = `(${cur + n} pts)`;
   buildLegacyBoons();
+}
+
+function showUtilityMenu() {
+  const buttons = [
+    { label:'💾 Save', action:() => { closeModal(); saveGame(); cloudSave(); showToast('💾 Saved'); } },
+    { label:'☁ Sync', action:() => { closeModal(); syncFromCloud(); } },
+    { label:'📜 Campaign Chronicle', action:() => { closeModal(); showCampaignChronicle(); } },
+    { label:'↩ Return to setup', action:() => { closeModal(); if(confirm('Return to setup? Unsaved progress will be lost.')) location.reload(); } },
+    { label:'🔧 Dev Tools', action:() => { closeModal(); devTools(); } },
+  ];
+  showModal('Menu', 'Game and campaign options', buttons);
 }
 
 function devTools() {
