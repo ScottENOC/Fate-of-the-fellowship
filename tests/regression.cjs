@@ -11,9 +11,15 @@ const engineSource = fs.readFileSync(path.join(ROOT, 'engine.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
 function makeContext() {
+  let seed = 0x5eed1234;
+  const testMath = Object.create(Math);
+  testMath.random = () => {
+    seed = (1664525 * seed + 1013904223) >>> 0;
+    return seed / 0x100000000;
+  };
   const sandbox = {
     console,
-    Math,
+    Math: testMath,
     Date,
     JSON,
     Object,
@@ -118,6 +124,50 @@ test('free-people lieutenant boon state is wired into newGame', () => {
   assert.equal(g.freeLtBoons.cirdan, 1);
   assert.ok(g.freeLtState.cirdan, 'Cirdan state should exist');
   assert.equal(g.freeLtState.cirdan.active, true, 'Cirdan is an immediate-spawn lieutenant');
+});
+
+test('straightforward Legacy boons change starting game state', () => {
+  const baseCtx = makeContext();
+  const base = startGame(baseCtx, {
+    numPlayers: 1, playerNames: ['Base'], charAssignment: [['frodo-sam', 'aragorn']],
+    difficulty: 'standard', cardPrefs: {}, boons: {},
+  });
+
+  const boonCtx = makeContext();
+  const boosted = startGame(boonCtx, {
+    numPlayers: 1, playerNames: ['Boosted'], charAssignment: [['frodo-sam', 'aragorn']],
+    difficulty: 'standard', cardPrefs: {},
+    boons: { 'extra-event': 1, 'gondor-troop': 1, 'elf-troop': 1, 'dwarf-troop': 1, 'rohan-troop': 1, 'shadow-troop': 1, 'more-hope': 1, reshuffle: 1 },
+  });
+
+  assert.equal(boosted.hope, base.hope + 1);
+  assert.equal(boosted.maxHope, base.maxHope + 1);
+  assert.equal(boosted.troopSupply.gondor, base.troopSupply.gondor + 1);
+  assert.equal(boosted.troopSupply.elven, base.troopSupply.elven + 1);
+  assert.equal(boosted.troopSupply.dwarven, base.troopSupply.dwarven + 1);
+  assert.equal(boosted.troopSupply.rohirrim, base.troopSupply.rohirrim + 1);
+  assert.equal(boosted.shadowSupply, base.shadowSupply - 1);
+  assert.equal(boosted.legacyReshufflesLeft, 1);
+  assert.equal(boosted.unusedEventCards.length, base.unusedEventCards.length - 1);
+});
+
+test('Legacy reshuffle is consumed before empty-deck hope loss', () => {
+  const ctx = makeContext();
+  startGame(ctx, {
+    numPlayers: 1, playerNames: ['Tester'], charAssignment: [['frodo-sam', 'aragorn']],
+    difficulty: 'standard', cardPrefs: {}, boons: { reshuffle: 1 },
+  });
+  vm.runInContext(`
+    G.playerDeck = [];
+    G.playerDiscard = [{ id:'recycle-1', name:'Recycle One', type:'region', symbol:'valor' }, { id:'recycle-2', name:'Recycle Two', type:'region', symbol:'stealth' }];
+    G.players[0].hand = [];
+    G.phase = 'draw-player';
+  `, ctx);
+  const beforeHope = evalIn(ctx, 'G.hope');
+  vm.runInContext('drawPlayerCards()', ctx);
+  assert.equal(evalIn(ctx, 'G.legacyReshufflesLeft'), 0);
+  assert.equal(evalIn(ctx, 'G.hope'), beforeHope);
+  assert.equal(evalIn(ctx, 'G.players[0].hand.length'), 2);
 });
 
 test('map connections only reference known locations', () => {
