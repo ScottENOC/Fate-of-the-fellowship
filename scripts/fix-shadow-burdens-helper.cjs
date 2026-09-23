@@ -1,0 +1,10 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const p = path.join(__dirname, 'apply-shadow-burdens.cjs');
+let s = fs.readFileSync(p, 'utf8');
+s = s.replace("    const id = document.getElementById(`shadow-burden-${i}`)?.value;", "    const id = document.getElementById('shadow-burden-' + i)?.value;");
+s = s.replace("  summary.textContent = `${slots} burden${slots===1?'':'s'} active at this tier. New slots unlock at Legendary +2, +5 and +8.`;", "  summary.textContent = slots + ' burden' + (slots===1?'':'s') + ' active at this tier. New slots unlock at Legendary +2, +5 and +8.';");
+s = s.replace("    sel.id = `shadow-burden-${i}`;", "    sel.id = 'shadow-burden-' + i;");
+fs.writeFileSync(p, s);
+console.log('Shadow Burdens helper syntax repaired.');
