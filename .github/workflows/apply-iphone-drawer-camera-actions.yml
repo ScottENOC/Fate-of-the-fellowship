@@ -1,0 +1,39 @@
+name: Apply iPhone drawer camera actions
+on:
+  push:
+    branches: [feature/iphone-drawer-camera-actions]
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/apply-iphone-drawer-camera-actions.cjs
+      - run: npm test
+      - name: Verify drawer/camera/action invariants
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('index.html','utf8');
+          const needles=[
+            'height:min(52dvh,480px)',
+            'function visibleMapViewportHeight(panel)',
+            "h -= sidebar.getBoundingClientRect().height;",
+            "if ((a.key === 'muster' || a.key === 'capture') && !a.ok) continue;",
+            'id="action-footer"',
+            "actionFooter.insertBefore(doneBtn, phaseBtn)",
+            'visibleMapViewportHeight(panel) / 2 - y * zoom'
+          ];
+          for(const n of needles) if(!s.includes(n)) throw new Error('missing invariant: '+n);
+          NODE
+      - name: Commit source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git commit -m "Improve iPhone drawer camera and action layout [iphone-drawer-camera-actions]"
+          git push
