@@ -359,6 +359,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <g id="connections-layer"></g>
         <g id="battle-lines-layer"></g>
         <g id="locations-layer"></g>
+        <g id="objective-layer"></g>
         <g id="chars-layer"></g>
       </svg>
       <!-- Map layer toggles -->
@@ -2469,6 +2470,52 @@ function renderActions() {
   }
 }
 
+const OBJECTIVE_MAP_TARGETS = {
+  'destroy-ring':['mount-doom'],
+  'blessing-elves':['rivendell'],
+  'frecas-heirs':['dunland'],
+  'theodens-mind':['edoras'],
+  'saruman-staff':['isengard'],
+  'challenge-sauron':['north-ithilien'],
+  'confront-balrog':['moria'],
+  'infiltrate-minas-morgul':['minas-morgul'],
+  'unseat-denethor':['minas-tirith'],
+  'secure-osgiliath':['osgiliath'],
+  'arwen-banner':['minas-tirith'],
+  'lift-shadow-dwarven':['ered-luin','lake-town'],
+  'avenge-balin':['moria'],
+  'bring-light-mirkwood':['woodland-realm','old-forest-road','southern-mirkwood'],
+  'shelobs-lair':['minas-morgul'],
+  'lay-bare-pits':['dol-guldur'],
+  'subdue-umbar':['umbar','near-harad','harondor'],
+};
+
+function objectiveMapLocations(obj) {
+  if (!obj || obj.done) return [];
+  if (obj.id === 'oathbreakers-duty') return obj.aragornCalledOaths ? [] : ['edoras','erech'];
+  return OBJECTIVE_MAP_TARGETS[obj.id] || [];
+}
+
+function showObjectiveDetails(obj) {
+  if (!obj) return;
+  if (obj.done) { showModal(obj.name, '✅ Already completed!<br>' + (obj.whenCompleted||'')); return; }
+  const btns = [];
+  if (UI.selectedChar && !obj.required) {
+    btns.unshift({ label:'Complete ('+(CHARS[UI.selectedChar]?.name||UI.selectedChar)+')', action:()=>{
+      closeModal();
+      const r = actionCompleteObjective(UI.selectedChar, obj.id);
+      render();
+      if (r?.error) { showModal('Cannot complete', r.error); return; }
+      if (r?.balrogRoll) showBalrogResolutionModal(r.balrogRoll);
+      if (r?.sheloblRoll) showShеlobModal(r.sheloblRoll, r.gollumPenalty || 0);
+    }});
+  }
+  showModal(obj.name,
+    '<strong>To complete:</strong><br>'+obj.completeIf+'<br><br><strong>Reward:</strong><br>'+(obj.whenCompleted||'—')+
+    (obj.setup ? '<br><br><em>Setup: '+obj.setup+'</em>' : '') +
+    (obj.reservedTroops > 0 ? '<br><span style="color:#50c850">'+obj.reservedTroops+' '+(obj.setupTroopType||'Elven')+' troops reserved on this card</span>' : ''), btns);
+}
+
 function renderObjectives() {
   const el = document.getElementById('obj-list');
   if (!el || !G) return;
@@ -2517,24 +2564,7 @@ function renderObjectives() {
       tEl.textContent = `🏹 Troops on card: ${held}/6`;
       div.appendChild(tEl);
     }
-    div.onclick = () => {
-      if (obj.done) { showModal(obj.name, '✅ Already completed!<br>' + (obj.whenCompleted||'')); return; }
-      const btns = [];
-      if (!obj.done && UI.selectedChar && !obj.required) {
-        btns.unshift({ label:`Complete (${CHARS[UI.selectedChar]?.name})`, action:()=>{
-          closeModal();
-          const r = actionCompleteObjective(UI.selectedChar, obj.id);
-          render();
-          if (r?.error) { showModal('Cannot complete', r.error); return; }
-          if (r?.balrogRoll) showBalrogResolutionModal(r.balrogRoll);
-          if (r?.sheloblRoll) showShеlobModal(r.sheloblRoll, r.gollumPenalty || 0);
-        }});
-      }
-      showModal(obj.name,
-        `<strong>To complete:</strong><br>${obj.completeIf}<br><br><strong>Reward:</strong><br>${obj.whenCompleted||'—'}`+
-        (obj.setup ? `<br><br><em>Setup: ${obj.setup}</em>` : '') +
-        (obj.reservedTroops > 0 ? `<br><span style="color:#50c850">${obj.reservedTroops} ${obj.setupTroopType||'Elven'} troops reserved on this card</span>` : ''), btns);
-    };
+    div.onclick = () => showObjectiveDetails(obj);
     el.appendChild(div);
   }
 }
@@ -2618,12 +2648,14 @@ function renderMap() {
     mapStaticBuilt = true;
   }
   renderLocations();
+  renderObjectiveMarkers();
   renderCharMarkers();
   // Apply layer visibility
   const s = UI.show;
   document.getElementById('connections-layer').style.display   = s.routes     ? '' : 'none';
   document.getElementById('battle-lines-layer').style.display  = s.routes     ? '' : 'none';
   document.getElementById('locations-layer').style.display     = s.locations  ? '' : 'none';
+  document.getElementById('objective-layer').style.display      = s.locations  ? '' : 'none';
   document.getElementById('chars-layer').style.display         = s.characters ? '' : 'none';
   // Nazgûl markers are inside chars-layer; toggle their sub-group
   document.querySelectorAll('.nazgul-marker').forEach(el => { el.style.display = s.nazgul ? '' : 'none'; });
@@ -2763,6 +2795,38 @@ const TYPE_COLORS = {
   elven:'#3a7a3a', dwarven:'#606060', rohirrim:'#8b5a20',
   gondor:'#2a4a8a', shadow:'#8b2020', normal:'#5a4a30',
 };
+
+function renderObjectiveMarkers() {
+  const layer = document.getElementById('objective-layer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  const byLoc = {};
+  for (const obj of (G.objectives || [])) {
+    for (const locId of objectiveMapLocations(obj)) {
+      if (!LOCS[locId]) continue;
+      (byLoc[locId] ||= []).push(obj);
+    }
+  }
+  for (const [locId, objs] of Object.entries(byLoc)) {
+    const loc = LOCS[locId];
+    const cx = loc.x + 1.9, cy = loc.y - 2.15;
+    const g = svgEl('g',{cursor:'pointer',class:'objective-marker','data-location':locId});
+    g.style.pointerEvents='all';
+    g.onclick=e=>{
+      e.stopPropagation();
+      if (objs.length===1) { showObjectiveDetails(objs[0]); return; }
+      const rows=objs.map(o=>'<button class="btn btn-sm" style="width:100%;margin:3px 0;text-align:left" onclick="closeModal();showObjectiveDetails(G.objectives.find(x=>x.id===\''+o.id+'\'))">! '+escapeHtml(o.name)+'</button>').join('');
+      showModal((LOCS[locId]?.name||locId)+' objectives', rows);
+    };
+    g.appendChild(svgEl('circle',{cx,cy,r:2.15,fill:'transparent',stroke:'none',class:'touch-hit'}));
+    g.appendChild(svgEl('circle',{cx,cy,r:1.08,fill:'#2a2114',stroke:'#d6ad58','stroke-width':0.28,opacity:0.92}));
+    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+    Object.entries({x:cx,y:cy+0.03,fill:'#f0cf78','font-size':'4.2','font-weight':'bold','text-anchor':'middle','dominant-baseline':'middle'}).forEach(([k,v])=>t.setAttribute(k,v));
+    t.textContent = objs.length>1 ? String(objs.length) : '!';
+    g.appendChild(t);
+    layer.appendChild(g);
+  }
+}
 
 function renderLocations() {
   const layer = document.getElementById('locations-layer');

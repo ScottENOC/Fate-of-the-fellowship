@@ -170,6 +170,18 @@ test('save migration adds the roguelike run-record marker', () => {
 
 
 
+
+test('active location objectives render as tappable map markers', () => {
+  assert.ok(indexSource.includes('id="objective-layer"'));
+  assert.ok(indexSource.includes('function objectiveMapLocations(obj)'));
+  assert.ok(indexSource.includes('function renderObjectiveMarkers()'));
+  assert.ok(indexSource.includes("'destroy-ring':['mount-doom']"));
+  assert.ok(indexSource.includes("'secure-osgiliath':['osgiliath']"));
+  assert.ok(indexSource.includes("obj.id === 'oathbreakers-duty'"));
+  assert.ok(indexSource.includes("class:'objective-marker'"));
+  assert.ok(indexSource.includes('showObjectiveDetails(objs[0])'));
+});
+
 test('current player characters have persistent map highlight', () => {
   assert.ok(indexSource.includes("if (isCurrentPlayer) {"));
   assert.ok(indexSource.includes("stroke:'#c8a050','stroke-width':0.45,opacity:0.88"));
