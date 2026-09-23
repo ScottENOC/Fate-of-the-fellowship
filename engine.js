@@ -76,7 +76,9 @@ function newGame(cfg) {
   // Build player deck
   const regionCards = makeRegionCards();
   const eventCountByPlayers = { 1:4, 2:6, 3:7, 4:8, 5:9, 6:10, 7:11 };
-  const numEventCards = eventCountByPlayers[numPlayers] ?? EVENT_CARDS.length;
+  const baseEventCards = eventCountByPlayers[numPlayers] ?? EVENT_CARDS.length;
+  const extraEventCards = Math.max(0, boons['extra-event'] || 0);
+  const numEventCards = Math.min(EVENT_CARDS.length, baseEventCards + extraEventCards);
   const { cardPrefs = {} } = cfg;
   const eventCards  = selectByPriority(EVENT_CARDS, cardPrefs, numEventCards);
   const unusedEventCards = EVENT_CARDS.filter(c => !eventCards.some(e => e.id === c.id));
@@ -151,19 +153,19 @@ function newGame(cfg) {
     players,
     charState,
     locState,
-    hope: 6,
-    maxHope: 8,
+    hope: 6 + Math.max(0, boons['more-hope'] || 0),
+    maxHope: 8 + Math.max(0, boons['more-hope'] || 0),
     threatRate: 1,
     maxThreat: 5,
     eyeRegion: 'eriador',
     nazgul: { eriador:2, rhudaur:1, 'misty-mountains':1, gondor:1, mordor:4 },
     troopSupply: {
-      dwarven:  Math.max(0, 5 - (troopReserved.dwarven  || 0)),
-      elven:    Math.max(0, 5 - (troopReserved.elven    || 0)),
-      rohirrim: Math.max(0, 5 - (troopReserved.rohirrim || 0)),
-      gondor:   Math.max(0, 5 - (troopReserved.gondor   || 0)),
+      dwarven:  Math.max(0, 5 - (troopReserved.dwarven  || 0) + Math.max(0, boons['dwarf-troop']  || 0)),
+      elven:    Math.max(0, 5 - (troopReserved.elven    || 0) + Math.max(0, boons['elf-troop']    || 0)),
+      rohirrim: Math.max(0, 5 - (troopReserved.rohirrim || 0) + Math.max(0, boons['rohan-troop']  || 0)),
+      gondor:   Math.max(0, 5 - (troopReserved.gondor   || 0) + Math.max(0, boons['gondor-troop'] || 0)),
     },
-    shadowSupply: 45 - 18 - (9 + extraSetupDraws), // 45 total minus normal+extra setup draws
+    shadowSupply: Math.max(0, 45 - 18 - (9 + extraSetupDraws) - Math.max(0, boons['shadow-troop'] || 0)), // legacy boon removes reserve troops
     playerDeck,
     playerDiscard: [],
     shadowDeck,
@@ -188,7 +190,8 @@ function newGame(cfg) {
     nazgulDeaths: 0,           // total Nazgûl kills by Éowyn (for Shieldmaiden objective)
     gandalfState: 'grey',      // 'grey' | 'dead' | 'awaiting-white' | 'white'
     shadowLieutenants: [],     // active lieutenant ids from legendary+
-    freeLtBoons: boons,        // which free lt boons are purchased (id → count)
+    freeLtBoons: boons,        // purchased Legacy boons (id → count)
+    legacyReshufflesLeft: Math.max(0, boons.reshuffle || 0),
     freeLtState: {},           // per-lt state: { active, location }
   };
   // Initialize free peoples lieutenant state
@@ -1651,8 +1654,16 @@ function drawPlayerCards() {
   const drawn = [];
   for (let i = 0; i < 2; i++) {
     if (G.playerDeck.length === 0) {
-      loseHope(1, 'Player deck empty');
-      continue;
+      if ((G.legacyReshufflesLeft || 0) > 0 && G.playerDiscard.length > 0) {
+        G.playerDeck = shuffle(G.playerDiscard);
+        G.playerDiscard = [];
+        G.legacyReshufflesLeft--;
+        addLog(`Legacy boon: player discard reshuffled into a new deck (${G.legacyReshufflesLeft} reshuffle(s) left).`);
+      }
+      if (G.playerDeck.length === 0) {
+        loseHope(1, 'Player deck empty');
+        continue;
+      }
     }
     const card = G.playerDeck.pop();
     drawn.push(card);
