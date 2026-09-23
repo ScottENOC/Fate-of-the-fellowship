@@ -107,7 +107,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 /* ── MENU TOGGLE BUTTON (floats on map) ── */
 #menu-toggle-btn{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);z-index:46;background:rgba(20,15,8,.42);border:1px solid rgba(120,92,48,.55);color:#d7c28e;width:36px;height:24px;border-radius:12px;cursor:pointer;font-family:inherit;font-size:.82em;line-height:1;transition:bottom .18s ease,background .15s}
 #menu-toggle-btn:hover{background:rgba(30,22,10,.68);border-color:#c8a050}
-#menu-toggle-btn.drawer-open{bottom:min(68dvh,620px);border-radius:10px 10px 0 0}
+#menu-toggle-btn.drawer-open{bottom:min(52dvh,480px);border-radius:10px 10px 0 0}
 #mobile-status-hud{display:none}
 #mobile-action-sheet{display:none}
 #mobile-utility-menu-btn{display:none}
@@ -124,7 +124,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   #setup{height:100dvh;padding-top:calc(20px + env(safe-area-inset-top));padding-bottom:calc(28px + env(safe-area-inset-bottom))}
   #game{position:relative;flex-direction:column;height:100dvh}
   #map-panel{height:100%;flex:1}
-  #sidebar{position:fixed;left:0;right:0;bottom:0;z-index:45;width:100%;min-width:0;height:min(68dvh,620px);border-left:none;border-top:1px solid #6a5020;border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.7);padding-bottom:env(safe-area-inset-bottom)}
+  #sidebar{position:fixed;left:0;right:0;bottom:0;z-index:45;width:100%;min-width:0;height:min(52dvh,480px);border-left:none;border-top:1px solid #6a5020;border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.7);padding-bottom:env(safe-area-inset-bottom)}
   #sidebar.menu-hidden{display:none}
   #middle{padding-bottom:12px}
   #log-area{display:none}
@@ -133,7 +133,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   .setup-card{width:calc(100vw - 32px);max-width:460px}
   #toast{bottom:calc(88px + env(safe-area-inset-bottom));max-width:calc(100vw - 24px);white-space:normal;text-align:center}
   #menu-toggle-btn{position:fixed;top:auto;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));min-width:0;min-height:0;padding:0;border-radius:12px}
-  #menu-toggle-btn.drawer-open{bottom:min(calc(68dvh + env(safe-area-inset-bottom)),calc(620px + env(safe-area-inset-bottom)))}
+  #menu-toggle-btn.drawer-open{bottom:min(calc(52dvh + env(safe-area-inset-bottom)),calc(480px + env(safe-area-inset-bottom)))}
   #map-toggles{top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right))}
   #map-toggles-btn{width:44px;height:44px;border-radius:22px;font-size:18px}
   #map-toggles-menu{top:50px}
@@ -146,6 +146,8 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   #mobile-utility-menu-btn{display:block;pointer-events:auto;min-height:32px;padding:5px 10px;border-radius:14px;background:rgba(20,15,8,.4);border:1px solid rgba(106,80,32,.55);color:#c8b080;font-family:inherit;font-size:.72em}
   .btn-sm,.action-btn,.char-card,.card-item,.token-chip{min-height:44px}
   .action-btn{padding:9px 6px}
+  #action-footer{display:flex;gap:4px;align-items:stretch}
+  #action-footer > button{flex:1 1 50%;width:auto!important;margin-top:4px;min-width:0;padding-left:6px;padding-right:6px}
   .char-card{padding:9px 10px}
   .card-item{padding:9px 10px}
   .token-chip{padding:8px 10px}
@@ -390,7 +392,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
         <div class="section-title">Actions</div>
         <div id="action-hint" style="font-size:.75em;color:#907040;margin-bottom:4px;min-height:28px"></div>
         <div class="actions-grid" id="action-grid"></div>
-        <button class="btn" id="phase-btn" onclick="clickPhaseBtn()">End Actions →</button>
+        <div id="action-footer"><button class="btn" id="phase-btn" onclick="clickPhaseBtn()">End Actions →</button></div>
       </div>
       <!-- Hand -->
       <div>
@@ -1001,6 +1003,7 @@ function toggleSidebar() {
     btn.classList.toggle('drawer-open', opening);
     btn.setAttribute('aria-label', opening ? 'Close game drawer' : 'Open game drawer');
   }
+  requestAnimationFrame(() => { clampPan(); applyMapTransform(); });
 }
 
 function autoSave() {
@@ -1704,10 +1707,21 @@ function centerMapAtBase() {
   mapView.panY = (ph - mapView.baseHeight * mapView.zoom) / 2;
 }
 
+function visibleMapViewportHeight(panel) {
+  if (!panel) return 0;
+  let h = panel.clientHeight;
+  const sidebar = document.getElementById('sidebar');
+  const portrait = window.matchMedia?.('(orientation: portrait)').matches;
+  if (portrait && sidebar && !sidebar.classList.contains('menu-hidden')) {
+    h -= sidebar.getBoundingClientRect().height;
+  }
+  return Math.max(1, h);
+}
+
 function clampPan() {
   const panel = document.getElementById('map-panel');
   if (!panel) return;
-  const pw = panel.clientWidth, ph = panel.clientHeight;
+  const pw = panel.clientWidth, ph = visibleMapViewportHeight(panel);
   const baseW = mapView.baseWidth || document.getElementById('map-wrap')?.offsetWidth || pw;
   const baseH = mapView.baseHeight || document.getElementById('map-wrap')?.offsetHeight || ph;
   const scaledW = baseW * mapView.zoom;
@@ -1909,7 +1923,7 @@ function centerMapOnLocation(locId, minZoom = 2.2) {
   const y = (loc.y / 100) * (svg.offsetHeight || panel.offsetHeight);
   mapView.zoom = zoom;
   mapView.panX = panel.offsetWidth / 2 - x * zoom;
-  mapView.panY = panel.offsetHeight / 2 - y * zoom;
+  mapView.panY = visibleMapViewportHeight(panel) / 2 - y * zoom;
   clampPan(); applyMapTransform();
 }
 
@@ -2258,6 +2272,8 @@ function renderActions() {
   el.innerHTML = '';
   const hint = document.getElementById('action-hint');
   const phaseBtn = document.getElementById('phase-btn');
+  const actionFooter = document.getElementById('action-footer');
+  actionFooter?.querySelectorAll('.char-done-btn').forEach(b => b.remove());
 
   if (G.phase === 'gameover') {
     hint.textContent = G.winner === 'players' ? 'Victory!' : 'Defeat.';
@@ -2392,6 +2408,7 @@ function renderActions() {
   }
 
   for (const a of actions) {
+    if ((a.key === 'muster' || a.key === 'capture') && !a.ok) continue;
     const btn = document.createElement('button');
     btn.className = 'action-btn' + (UI.pendingAction===a.key?' active-action':'');
     btn.textContent = a.label;
@@ -2408,8 +2425,7 @@ function renderActions() {
     const _isMulti = Object.keys(G.turn?.charActions || {}).length > 1;
     const _isPrimary = !G.turn?.primaryChar || G.turn?.primaryChar === sc;
     const doneBtn = document.createElement('button');
-    doneBtn.className = 'action-btn btn-danger';
-    doneBtn.style.gridColumn = '1 / -1';
+    doneBtn.className = 'action-btn btn-danger char-done-btn';
     doneBtn.textContent = _isPrimary && _isMulti ? 'End Actions →' : `Done with ${CHARS[sc].name}`;
     doneBtn.onclick = () => {
       const turn = G.turn;
@@ -2443,7 +2459,8 @@ function renderActions() {
       }
       render();
     };
-    el.appendChild(doneBtn);
+    if (actionFooter && phaseBtn) actionFooter.insertBefore(doneBtn, phaseBtn);
+    else el.appendChild(doneBtn);
   }
 }
 
