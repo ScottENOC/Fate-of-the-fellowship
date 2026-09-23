@@ -9,7 +9,7 @@ const SHADOW_BURDENS = [
   { id:'mordor-musters', name:'Mordor Musters', desc:'The Black Land is already mobilising: +1 shadow troop at Minas Morgul and Barad-dûr.', setupShadow:{ 'minas-morgul':1, 'barad-dur':1 } },
   { id:'darkening-skies', name:'Darkening Skies', desc:'Draw 1 additional Shadow card during setup.', extraSetupDraws:1 },
   { id:'hope-wanes', name:'Hope Wanes', desc:'Start with 1 less Hope and reduce maximum Hope by 1.', hopePenalty:1 },
-  { id:'nine-ride', name:'The Nine Ride', desc:'Add 1 Nazgûl to Mordor at setup.', extraNazgul:{ mordor:1 } },
+  { id:'nine-ride', name:'The Nine Ride', desc:'One of the Nine rides west early: move 1 Nazgûl from Mordor to Rhudaur.', moveNazgul:{ from:'mordor', to:'rhudaur', count:1 } },
 ];
 
 // Upgrade older local/cloud saves in place. Migrations are intentionally
@@ -56,6 +56,7 @@ function migrateGameState(state) {
     s.plusLevel = m ? parseInt(m[1]) : 0;
   }
   if (!Number.isFinite(s.savedAt)) s.savedAt = 0;
+  if (typeof s.rogueRunRecorded !== 'boolean') s.rogueRunRecorded = false;
   s.saveVersion = GAME_STATE_VERSION;
   return s;
 }
@@ -279,6 +280,7 @@ function newGame(cfg) {
     gandalfState: 'grey',      // 'grey' | 'dead' | 'awaiting-white' | 'white'
     shadowLieutenants: [],     // active lieutenant ids from legendary+
     shadowBurdens: activeBurdenIds,
+    rogueRunRecorded: false,
     freeLtBoons: boons,        // purchased Legacy boons (id → count)
     legacyReshufflesLeft: Math.max(0, boons.reshuffle || 0),
     legacySetup: JSON.parse(JSON.stringify(legacySetup || {})),
@@ -311,9 +313,14 @@ function newGame(cfg) {
       G.locState[locId].shadowTroops += add;
       G.shadowSupply -= add;
     }
-    for (const [regionId, count] of Object.entries(burden.extraNazgul || {})) {
-      if (G.nazgul[regionId] === undefined) continue;
-      G.nazgul[regionId] += Math.max(0, Number(count) || 0);
+    if (burden.moveNazgul) {
+      const from = burden.moveNazgul.from, to = burden.moveNazgul.to;
+      const requested = Math.max(0, Number(burden.moveNazgul.count) || 0);
+      if (G.nazgul[from] !== undefined && G.nazgul[to] !== undefined) {
+        const move = Math.min(requested, G.nazgul[from]);
+        G.nazgul[from] -= move;
+        G.nazgul[to] += move;
+      }
     }
     addLog(`Shadow Burden: ${burden.name} — ${burden.desc}`);
   }

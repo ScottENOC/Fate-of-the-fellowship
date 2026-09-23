@@ -145,6 +145,28 @@ test('Shadow Burden setup UI is wired into local and cloud game creation', () =>
   assert.ok(indexSource.includes('settings: { difficulty, cardPrefs, boons, legacySetup, shadowBurdens, selectedObjectiveIds }'));
 });
 
+test('The Nine Ride redistributes an existing Nazgul instead of creating a tenth', () => {
+  const ctx = makeContext();
+  const g = startGame(ctx, { numPlayers:1, playerNames:['Tester'], charAssignment:[['frodo-sam','aragorn']], difficulty:'legendary+2', cardPrefs:{}, boons:{}, shadowBurdens:['nine-ride'] });
+  assert.equal(Object.values(g.nazgul).reduce((a,b)=>a+b,0), 9);
+  assert.equal(g.nazgul.mordor, 3);
+  assert.equal(g.nazgul.rhudaur, 2);
+});
+
+test('roguelike history and evolving burden offers are wired into the UI', () => {
+  assert.ok(indexSource.includes("const ROGUE_HISTORY_KEY = 'fof-rogue-history';"));
+  assert.ok(indexSource.includes('function recordRoguelikeRunIfNeeded()'));
+  assert.ok(indexSource.includes('function getBurdenOfferIds(difficulty)'));
+  assert.ok(indexSource.includes('offers rotate toward less-used burdens'));
+  assert.ok(indexSource.includes('showCampaignChronicle()'));
+});
+
+test('save migration adds the roguelike run-record marker', () => {
+  const ctx = makeContext();
+  startGame(ctx, { numPlayers:1, playerNames:['Old'], charAssignment:[['frodo-sam','aragorn']], difficulty:'legendary+2', cardPrefs:{}, boons:{}, shadowBurdens:[] });
+  vm.runInContext('delete G.rogueRunRecorded; __rr = migrateGameState(G)', ctx);
+  assert.equal(evalIn(ctx, '__rr.rogueRunRecorded'), false);
+});
 test('free-people lieutenant boon state is wired into newGame', () => {
   const ctx = makeContext();
   const g = startGame(ctx, {
