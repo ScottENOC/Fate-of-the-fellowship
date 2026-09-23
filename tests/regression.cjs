@@ -169,6 +169,14 @@ test('save migration adds the roguelike run-record marker', () => {
 });
 
 
+
+test('current player characters have persistent map highlight', () => {
+  assert.ok(indexSource.includes("if (isCurrentPlayer) {"));
+  assert.ok(indexSource.includes("stroke:'#c8a050','stroke-width':0.45,opacity:0.88"));
+  assert.ok(indexSource.includes("stroke:isCurrentPlayer?'#f0d080':'#00000088'"));
+  assert.ok(indexSource.includes("r:2.25,fill:'none',stroke:'#ffffff'"));
+});
+
 test('compact portrait hand wiring is present', () => {
   assert.ok(indexSource.includes('grid-template-columns:repeat(auto-fit,minmax(132px,1fr))'));
   assert.ok(indexSource.includes('.card-item{padding:6px 8px;min-height:40px;font-size:.74em;justify-content:flex-start;gap:6px;line-height:1.15;overflow:hidden}'));
