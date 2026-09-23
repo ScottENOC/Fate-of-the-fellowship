@@ -151,6 +151,46 @@ test('straightforward Legacy boons change starting game state', () => {
   assert.equal(boosted.unusedEventCards.length, base.unusedEventCards.length - 1);
 });
 
+test('setup-choice Legacy boons apply explicit character, token and troop choices', () => {
+  const ctx = makeContext();
+  const g = startGame(ctx, {
+    numPlayers: 2, playerNames: ['One','Two'], charAssignment: [['frodo-sam','aragorn'], ['legolas','gimli']],
+    difficulty: 'standard', cardPrefs: {},
+    boons: { 'extra-char': 1, 'start-token': 2, 'deploy-troop': 1 },
+    legacySetup: {
+      extraCharacters: [{ playerIdx: 1, charId: 'eowyn' }],
+      startTokens: ['valor','stealth'],
+      deployTroops: [{ type:'gondor', locId:'minas-tirith' }],
+    },
+  });
+  assert.ok(g.players[1].chars.includes('eowyn'));
+  assert.equal(g.charState.eowyn.player, 1);
+  assert.equal(g.players[0].tokens.valor, 1);
+  assert.equal(g.players[1].tokens.valor, 1);
+  assert.equal(g.players[0].tokens.stealth, 1);
+  assert.equal(g.players[1].tokens.stealth, 1);
+  assert.equal(g.locState['minas-tirith'].friendly.gondor, 3);
+});
+
+test('setup-choice Legacy boon limits and deployment legality are enforced', () => {
+  const ctx = makeContext();
+  const g = startGame(ctx, {
+    numPlayers: 1, playerNames: ['One'], charAssignment: [['frodo-sam','aragorn']],
+    difficulty: 'standard', cardPrefs: {},
+    boons: { 'extra-char': 1, 'start-token': 1, 'deploy-troop': 1 },
+    legacySetup: {
+      extraCharacters: [{ playerIdx:0, charId:'eowyn' }, { playerIdx:0, charId:'gimli' }],
+      startTokens: ['friendship','valor'],
+      deployTroops: [{ type:'elven', locId:'nurn' }, { type:'elven', locId:'rivendell' }],
+    },
+  });
+  assert.ok(g.players[0].chars.includes('eowyn'));
+  assert.ok(!g.players[0].chars.includes('gimli'));
+  assert.equal(g.players[0].tokens.friendship, 1);
+  assert.equal(g.players[0].tokens.valor, 0);
+  assert.equal(g.locState.nurn.friendly.elven, 0, 'illegal deployment should be ignored');
+});
+
 test('Legacy reshuffle is consumed before empty-deck hope loss', () => {
   const ctx = makeContext();
   startGame(ctx, {

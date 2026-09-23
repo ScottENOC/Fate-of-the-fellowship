@@ -4,7 +4,7 @@
 let G = null; // the live game state
 
 function newGame(cfg) {
-  const { numPlayers, playerNames, boons = {} } = cfg;
+  const { numPlayers, playerNames, boons = {}, legacySetup = {} } = cfg;
   const difficulty = cfg.difficulty || 'standard';
   const plusMatch = difficulty.match(/^legendary\+(\d+)$/);
   const plusLevel = plusMatch ? parseInt(plusMatch[1]) : 0;
@@ -71,6 +71,29 @@ function newGame(cfg) {
       tokens: { friendship:0, valor:0, stealth:0, resistance:0 },
       actionsPerChar: cids.length === 1 ? 5 : 4,
     });
+  }
+
+  // Apply setup-choice Legacy boons before decks/objectives are built so
+  // bonus characters count for character-specific objectives. Invalid or stale
+  // choices are ignored safely (for example, after changing player count).
+  const assignedChars = new Set(players.flatMap(p => p.chars));
+  const bonusCharChoices = Array.isArray(legacySetup.extraCharacters) ? legacySetup.extraCharacters : [];
+  const bonusCharLimit = Math.max(0, boons['extra-char'] || 0);
+  for (const choice of bonusCharChoices.slice(0, bonusCharLimit)) {
+    const playerIdx = Number(choice?.playerIdx);
+    const charId = choice?.charId;
+    if (!Number.isInteger(playerIdx) || !players[playerIdx] || !CHARS[charId] || assignedChars.has(charId)) continue;
+    players[playerIdx].chars.push(charId);
+    charState[charId].player = playerIdx;
+    assignedChars.add(charId);
+  }
+
+  const tokenChoices = Array.isArray(legacySetup.startTokens) ? legacySetup.startTokens : [];
+  const tokenLimit = Math.max(0, boons['start-token'] || 0);
+  const validTokenKeys = new Set(['friendship','valor','stealth','resistance']);
+  for (const sym of tokenChoices.slice(0, tokenLimit)) {
+    if (!validTokenKeys.has(sym)) continue;
+    for (const p of players) p.tokens[sym] = (p.tokens[sym] || 0) + 1;
   }
 
   // Build player deck
@@ -192,8 +215,27 @@ function newGame(cfg) {
     shadowLieutenants: [],     // active lieutenant ids from legendary+
     freeLtBoons: boons,        // purchased Legacy boons (id → count)
     legacyReshufflesLeft: Math.max(0, boons.reshuffle || 0),
+    legacySetup: JSON.parse(JSON.stringify(legacySetup || {})),
     freeLtState: {},           // per-lt state: { active, location }
   };
+  // Deploy setup-choice friendly troops after G exists. A legal deployment
+  // location must begin as a haven, already contain a friendly troop, or host
+  // one of the Fellowship's characters. Each placement consumes reserve supply.
+  const deployChoices = Array.isArray(legacySetup.deployTroops) ? legacySetup.deployTroops : [];
+  const deployLimit = Math.max(0, boons['deploy-troop'] || 0);
+  const validTroopTypes = new Set(['dwarven','elven','rohirrim','gondor']);
+  for (const choice of deployChoices.slice(0, deployLimit)) {
+    const type = choice?.type;
+    const locId = choice?.locId;
+    const loc = G.locState[locId];
+    if (!validTroopTypes.has(type) || !loc || (G.troopSupply[type] || 0) <= 0) continue;
+    const hasFriendly = Object.values(loc.friendly || {}).some(n => n > 0);
+    const hasCharacter = Object.values(G.charState).some(c => c.player !== null && c.alive && c.location === locId);
+    if (!loc.isHaven && !hasFriendly && !hasCharacter) continue;
+    loc.friendly[type] = (loc.friendly[type] || 0) + 1;
+    G.troopSupply[type]--;
+  }
+
   // Initialize free peoples lieutenant state
   for (const lt of FREE_PEOPLES_LIEUTENANTS) {
     G.freeLtState[lt.id] = { active: false, location: lt.spawnLoc };
