@@ -240,6 +240,11 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
       <select id="difficulty"></select>
     </div>
   </div>
+  <div class="setup-card" id="shadow-burden-panel" style="display:none">
+    <h3>Shadow Burdens <span style="font-size:.7em;font-weight:normal;color:#706050">Legendary+ campaign modifiers</span></h3>
+    <p id="shadow-burden-summary" style="font-size:.76em;color:#706050;margin:0 0 8px"></p>
+    <div id="shadow-burden-choices"></div>
+  </div>
   <div class="setup-card">
     <h3>Card Preferences <span style="font-size:.7em;font-weight:normal;color:#706050">(optional)</span></h3>
     <p style="font-size:.76em;color:#706050;margin:0 0 10px">Prioritised cards are always included first. Avoid cards are only used when there aren't enough others to fill the required count.</p>
@@ -574,6 +579,7 @@ const RECORD_KEY = 'fof-wins';
 const LP_KEY     = 'fof-legacy-points';
 const BOONS_KEY  = 'fof-boons';
 const SAVE_KEY   = 'fof-save';
+const BURDEN_PREF_KEY = 'fof-shadow-burden-prefs';
 
 function getWinRecord() {
   try { return JSON.parse(localStorage.getItem(RECORD_KEY) || '{}'); } catch { return {}; }
@@ -600,6 +606,65 @@ function setBoon(id, val) {
   const b = getBoons(); b[id] = val; localStorage.setItem(BOONS_KEY, JSON.stringify(b));
 }
 
+function burdenSlotsForDifficulty(difficulty) {
+  const m = String(difficulty || '').match(/^legendary\+(\d+)$/);
+  if (!m) return 0;
+  return Math.min(3, Math.floor((parseInt(m[1]) + 1) / 3)); // +2, +5, +8
+}
+
+function getBurdenPrefs() {
+  try { return JSON.parse(localStorage.getItem(BURDEN_PREF_KEY) || '[]'); } catch { return []; }
+}
+
+function getSelectedShadowBurdens() {
+  const slots = burdenSlotsForDifficulty(document.getElementById('difficulty')?.value);
+  const ids = [];
+  for (let i = 0; i < slots; i++) {
+    const id = document.getElementById('shadow-burden-' + i)?.value;
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+function buildShadowBurdenChoices() {
+  const panel = document.getElementById('shadow-burden-panel');
+  const choices = document.getElementById('shadow-burden-choices');
+  const summary = document.getElementById('shadow-burden-summary');
+  if (!panel || !choices || !summary) return;
+  const difficulty = document.getElementById('difficulty')?.value || 'standard';
+  const slots = burdenSlotsForDifficulty(difficulty);
+  if (slots <= 0) { panel.style.display = 'none'; choices.innerHTML = ''; return; }
+  panel.style.display = 'block';
+  summary.textContent = slots + ' burden' + (slots===1?'':'s') + ' active at this tier. New slots unlock at Legendary +2, +5 and +8.';
+  const prefs = getBurdenPrefs();
+  const used = new Set();
+  choices.innerHTML = '';
+  for (let i = 0; i < slots; i++) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom:8px';
+    const sel = document.createElement('select');
+    sel.id = 'shadow-burden-' + i;
+    sel.style.width = '100%';
+    let selected = prefs[i];
+    if (!SHADOW_BURDENS.some(b => b.id === selected) || used.has(selected)) selected = SHADOW_BURDENS.find(b => !used.has(b.id))?.id;
+    for (const b of SHADOW_BURDENS) {
+      if (used.has(b.id) && b.id !== selected) continue;
+      const o = document.createElement('option'); o.value = b.id; o.textContent = b.name; o.selected = b.id === selected; sel.appendChild(o);
+    }
+    if (selected) used.add(selected);
+    const desc = document.createElement('div');
+    desc.style.cssText = 'font-size:.72em;color:#806850;margin-top:3px';
+    desc.textContent = SHADOW_BURDENS.find(b => b.id === selected)?.desc || '';
+    sel.onchange = () => {
+      const current = Array.from(document.querySelectorAll('[id^="shadow-burden-"]')).filter(e => e.tagName === 'SELECT').map(e => e.value);
+      localStorage.setItem(BURDEN_PREF_KEY, JSON.stringify(current));
+      buildShadowBurdenChoices();
+    };
+    wrap.appendChild(sel); wrap.appendChild(desc); choices.appendChild(wrap);
+  }
+  localStorage.setItem(BURDEN_PREF_KEY, JSON.stringify(getSelectedShadowBurdens()));
+}
+
 function buildDifficultySelect() {
   const sel = document.getElementById('difficulty');
   const rec = getWinRecord();
@@ -620,11 +685,13 @@ function buildDifficultySelect() {
       const prevKey = i === 1 ? 'legendary' : `legendary+${i-1}`;
       const unlocked = DEV_MODE || (rec[prevKey] || 0) > 0;
       if (!unlocked) break;
-      const extraObjs = i, extraDraws = Math.ceil(i/2), lieutenants = Math.min(Math.floor(i/2), 5);
-      opts.push({ v:key, label:`Legendary +${i} (${extraObjs} extra obj, ${extraDraws} extra draw${extraDraws!==1?'s':''}, ${lieutenants} lieutenant${lieutenants!==1?'s':''})` });
+      const extraObjs = i, extraDraws = Math.ceil(i/2), lieutenants = Math.min(Math.floor(i/2), 5), burdens = burdenSlotsForDifficulty(key);
+      opts.push({ v:key, label:`Legendary +${i} (${extraObjs} extra obj, ${extraDraws} extra draw${extraDraws!==1?'s':''}, ${lieutenants} lieutenant${lieutenants!==1?'s':''}${burdens ? `, ${burdens} burden${burdens!==1?'s':''}` : ''})` });
     }
   }
   sel.innerHTML = opts.map((o,i) => `<option value="${o.v}"${i===1?' selected':''}>${o.label}</option>`).join('');
+  sel.onchange = buildShadowBurdenChoices;
+  buildShadowBurdenChoices();
   // Show legacy panel if points available (always in DEV_MODE)
   const lp = getLegacyPoints();
   if (DEV_MODE || lp > 0 || Object.keys(getBoons()).length > 0) {
@@ -973,11 +1040,12 @@ async function createRoom() {
   const cardPrefs = getCardPrefs();
   const boons = getBoons();
   const legacySetup = getLegacySetupChoices(true);
+  const shadowBurdens = getSelectedShadowBurdens();
   const selectedObjectiveIds = pickLobbyObjectives(difficulty, cardPrefs);
   const lobby = {
     host: myId,
     status: 'waiting',
-    settings: { difficulty, cardPrefs, boons, legacySetup, selectedObjectiveIds },
+    settings: { difficulty, cardPrefs, boons, legacySetup, shadowBurdens, selectedObjectiveIds },
     players: {
       [myId]: { name: myName, chars: ['frodo-sam', 'random'], ready: false, lastSeen: Date.now(), joinedAt: Date.now() }
     }
@@ -1245,7 +1313,7 @@ async function startFromLobby() {
   const sorted = lobbyPlayerOrder(authLobby.players||{}, authLobby.host);
   if (sorted.length === 0) { showToast('⚠ No players found — cannot start'); return; }
 
-  const { difficulty: rawDiff, cardPrefs, boons, legacySetup, selectedObjectiveIds } = authLobby.settings || {};
+  const { difficulty: rawDiff, cardPrefs, boons, legacySetup, shadowBurdens, selectedObjectiveIds } = authLobby.settings || {};
   const difficulty = rawDiff || 'standard';
 
   // Determine which chars are required by selected objectives but not explicitly picked
@@ -1278,7 +1346,7 @@ async function startFromLobby() {
   if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0].unshift('frodo-sam');
   charAssignment = charAssignment.map(cs => cs.length ? cs : [Object.keys(CHARS)[0]]);
 
-  newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons, legacySetup, selectedObjectiveIds });
+  newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons, legacySetup, shadowBurdens, selectedObjectiveIds });
   G.roomCode = _lobbyRoomCode;
   G.playerIds = sorted.map(([pid])=>pid);
   G.savedAt = Date.now();
@@ -1478,6 +1546,7 @@ function devTools() {
     `<strong>Shadow supply remaining:</strong> ${sl}<br>` +
     `<strong>Friendly reserves:</strong> ${fl}<br>` +
     `<strong>Shadow lieutenants:</strong> ${G.shadowLieutenants.join(', ') || 'none'}<br>` +
+    `<strong>Shadow burdens:</strong> ${(G.shadowBurdens||[]).join(', ') || 'none'}<br>` +
     `<strong>Free lt boons:</strong> ${Object.entries(G.freeLtBoons||{}).filter(([,v])=>v>0).map(([k])=>k).join(', ')||'none'}`;
   showModal('🔧 Dev Tools', info, [
     { label:'⚔ Win Game', action:() => { closeModal(); endGame('players'); render(); } },
@@ -1640,7 +1709,8 @@ function startGame() {
   const cardPrefs = getCardPrefs();
   const boons = getBoons();
   const legacySetup = getLegacySetupChoices(false);
-  newGame({ numPlayers:n, playerNames:names, difficulty:diff, charAssignment, cardPrefs, boons, legacySetup });
+  const shadowBurdens = getSelectedShadowBurdens();
+  newGame({ numPlayers:n, playerNames:names, difficulty:diff, charAssignment, cardPrefs, boons, legacySetup, shadowBurdens });
   G.roomCode = (document.getElementById('room-code')?.value || '').trim().toUpperCase() || null;
   document.getElementById('setup').style.display = 'none';
   document.getElementById('game').style.display = 'flex';

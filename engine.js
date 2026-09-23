@@ -2,7 +2,15 @@
 
 // ── GAME STATE ────────────────────────────────────────────────────────────────
 let G = null; // the live game state
-const GAME_STATE_VERSION = 2;
+const GAME_STATE_VERSION = 3;
+
+const SHADOW_BURDENS = [
+  { id:'war-in-rohan', name:'War in Rohan', desc:'The war starts closer to the Mark: +1 shadow troop at Isengard and Fords of Isen.', setupShadow:{ isengard:1, 'fords-of-isen':1 } },
+  { id:'mordor-musters', name:'Mordor Musters', desc:'The Black Land is already mobilising: +1 shadow troop at Minas Morgul and Barad-dûr.', setupShadow:{ 'minas-morgul':1, 'barad-dur':1 } },
+  { id:'darkening-skies', name:'Darkening Skies', desc:'Draw 1 additional Shadow card during setup.', extraSetupDraws:1 },
+  { id:'hope-wanes', name:'Hope Wanes', desc:'Start with 1 less Hope and reduce maximum Hope by 1.', hopePenalty:1 },
+  { id:'nine-ride', name:'The Nine Ride', desc:'Add 1 Nazgûl to Mordor at setup.', extraNazgul:{ mordor:1 } },
+];
 
 // Upgrade older local/cloud saves in place. Migrations are intentionally
 // additive: old games keep their exact board/deck state while newly-required
@@ -31,6 +39,7 @@ function migrateGameState(state) {
   s.extraHavens = Array.isArray(s.extraHavens) ? s.extraHavens : [];
   s.skiesBuffer = Array.isArray(s.skiesBuffer) ? s.skiesBuffer : [];
   s.shadowLieutenants = Array.isArray(s.shadowLieutenants) ? s.shadowLieutenants : [];
+  s.shadowBurdens = Array.isArray(s.shadowBurdens) ? s.shadowBurdens : [];
   s.log = Array.isArray(s.log) ? s.log : [];
   s.freeLtBoons = s.freeLtBoons || {};
   s.freeLtState = s.freeLtState || {};
@@ -52,10 +61,17 @@ function migrateGameState(state) {
 }
 
 function newGame(cfg) {
-  const { numPlayers, playerNames, boons = {}, legacySetup = {} } = cfg;
+  const { numPlayers, playerNames, boons = {}, legacySetup = {}, shadowBurdens = [] } = cfg;
   const difficulty = cfg.difficulty || 'standard';
   const plusMatch = difficulty.match(/^legendary\+(\d+)$/);
   const plusLevel = plusMatch ? parseInt(plusMatch[1]) : 0;
+  const burdenSlots = plusLevel > 0 ? Math.min(3, Math.floor((plusLevel + 1) / 3)) : 0;
+  const activeBurdenIds = [...new Set(Array.isArray(shadowBurdens) ? shadowBurdens : [])]
+    .filter(id => SHADOW_BURDENS.some(b => b.id === id))
+    .slice(0, burdenSlots);
+  const activeBurdens = activeBurdenIds.map(id => SHADOW_BURDENS.find(b => b.id === id));
+  const burdenHopePenalty = activeBurdens.reduce((n,b) => n + (b.hopePenalty || 0), 0);
+  const burdenExtraDraws = activeBurdens.reduce((n,b) => n + (b.extraSetupDraws || 0), 0);
   const baseDiff = plusLevel > 0 ? 'legendary' : difficulty;
   const skiesCounts = { introductory:4, standard:5, heroic:5, epic:6, legendary:6 };
   const numSkies = skiesCounts[baseDiff] || 5;
@@ -210,7 +226,7 @@ function newGame(cfg) {
   // Shadow deck — draw 9 + extra for odd legendary+ levels (troop placement only)
   let shadowDeck = makeShadowDeck();
   const shadowSetupDiscard = [];
-  const extraSetupDraws = Math.ceil(plusLevel / 2); // +1 per odd + level
+  const extraSetupDraws = Math.ceil(plusLevel / 2) + burdenExtraDraws; // Legendary+ scaling plus active burdens
   for (let i = 0; i < 9 + extraSetupDraws; i++) {
     if (shadowDeck.length) {
       const card = shadowDeck.pop();
@@ -225,8 +241,8 @@ function newGame(cfg) {
     players,
     charState,
     locState,
-    hope: 6 + Math.max(0, boons['more-hope'] || 0),
-    maxHope: 8 + Math.max(0, boons['more-hope'] || 0),
+    hope: Math.max(1, 6 + Math.max(0, boons['more-hope'] || 0) - burdenHopePenalty),
+    maxHope: Math.max(1, 8 + Math.max(0, boons['more-hope'] || 0) - burdenHopePenalty),
     threatRate: 1,
     maxThreat: 5,
     eyeRegion: 'eriador',
@@ -262,6 +278,7 @@ function newGame(cfg) {
     nazgulDeaths: 0,           // total Nazgûl kills by Éowyn (for Shieldmaiden objective)
     gandalfState: 'grey',      // 'grey' | 'dead' | 'awaiting-white' | 'white'
     shadowLieutenants: [],     // active lieutenant ids from legendary+
+    shadowBurdens: activeBurdenIds,
     freeLtBoons: boons,        // purchased Legacy boons (id → count)
     legacyReshufflesLeft: Math.max(0, boons.reshuffle || 0),
     legacySetup: JSON.parse(JSON.stringify(legacySetup || {})),
@@ -283,6 +300,22 @@ function newGame(cfg) {
     if (!loc.isHaven && !hasFriendly && !hasCharacter) continue;
     loc.friendly[type] = (loc.friendly[type] || 0) + 1;
     G.troopSupply[type]--;
+  }
+
+  // Apply selected Shadow Burdens after the core state exists. Setup troops
+  // come from the finite shadow reserve, preserving the physical-piece total.
+  for (const burden of activeBurdens) {
+    for (const [locId, count] of Object.entries(burden.setupShadow || {})) {
+      if (!G.locState[locId]) continue;
+      const add = Math.max(0, Math.min(Number(count) || 0, G.shadowSupply));
+      G.locState[locId].shadowTroops += add;
+      G.shadowSupply -= add;
+    }
+    for (const [regionId, count] of Object.entries(burden.extraNazgul || {})) {
+      if (G.nazgul[regionId] === undefined) continue;
+      G.nazgul[regionId] += Math.max(0, Number(count) || 0);
+    }
+    addLog(`Shadow Burden: ${burden.name} — ${burden.desc}`);
   }
 
   // Initialize free peoples lieutenant state

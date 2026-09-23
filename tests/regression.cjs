@@ -110,6 +110,41 @@ test('Legendary+ scaling remains deterministic by tier', () => {
   assert.equal(g.shadowLieutenants.length, 2, 'Legendary+4 should spawn 2 shadow lieutenants');
 });
 
+test('Shadow Burdens are tier-gated, unique and modify setup state', () => {
+  const baseCtx = makeContext();
+  const base = startGame(baseCtx, { numPlayers:1, playerNames:['Base'], charAssignment:[['frodo-sam','aragorn']], difficulty:'legendary+5', cardPrefs:{}, boons:{}, shadowBurdens:[] });
+  const ctx = makeContext();
+  const g = startGame(ctx, { numPlayers:1, playerNames:['Burdened'], charAssignment:[['frodo-sam','aragorn']], difficulty:'legendary+5', cardPrefs:{}, boons:{}, shadowBurdens:['war-in-rohan','hope-wanes','darkening-skies'] });
+  assert.deepEqual(Array.from(g.shadowBurdens), ['war-in-rohan','hope-wanes']);
+  assert.equal(g.hope, base.hope - 1);
+  assert.equal(g.maxHope, base.maxHope - 1);
+  assert.equal(g.locState.isengard.shadowTroops, base.locState.isengard.shadowTroops + 1);
+  assert.equal(g.locState['fords-of-isen'].shadowTroops, base.locState['fords-of-isen'].shadowTroops + 1);
+  assert.equal(g.shadowSupply, base.shadowSupply - 2);
+});
+
+test('Darkening Skies burden adds one setup draw when a burden slot exists', () => {
+  const baseCtx = makeContext();
+  const base = startGame(baseCtx, { numPlayers:1, playerNames:['Base'], charAssignment:[['frodo-sam','aragorn']], difficulty:'legendary+2', cardPrefs:{}, boons:{}, shadowBurdens:[] });
+  const ctx = makeContext();
+  const g = startGame(ctx, { numPlayers:1, playerNames:['Dark'], charAssignment:[['frodo-sam','aragorn']], difficulty:'legendary+2', cardPrefs:{}, boons:{}, shadowBurdens:['darkening-skies'] });
+  assert.equal(g.shadowDiscard.length, base.shadowDiscard.length + 1);
+});
+
+test('old save migration supplies an empty Shadow Burden list', () => {
+  const ctx = makeContext();
+  ctx.__old = { saveVersion:2, players:[], currentPlayer:0 };
+  vm.runInContext('__m = migrateGameState(__old)', ctx);
+  assert.deepEqual(Array.from(evalIn(ctx, '__m.shadowBurdens')), []);
+  assert.equal(evalIn(ctx, '__m.saveVersion'), evalIn(ctx, 'GAME_STATE_VERSION'));
+});
+
+test('Shadow Burden setup UI is wired into local and cloud game creation', () => {
+  assert.ok(indexSource.includes('function buildShadowBurdenChoices()'));
+  assert.ok(indexSource.includes('const shadowBurdens = getSelectedShadowBurdens();'));
+  assert.ok(indexSource.includes('settings: { difficulty, cardPrefs, boons, legacySetup, shadowBurdens, selectedObjectiveIds }'));
+});
+
 test('free-people lieutenant boon state is wired into newGame', () => {
   const ctx = makeContext();
   const g = startGame(ctx, {
