@@ -2906,10 +2906,13 @@ function renderCharMarkers() {
       g.onmouseleave = hideTooltip;
       g.addEventListener('mousemove', moveTooltip);
 
-      if (isSelected) {
-        g.appendChild(svgEl('circle',{cx,cy,r:1.9,fill:'none',stroke:'#ffffff','stroke-width':0.5,opacity:0.9}));
+      if (isCurrentPlayer) {
+        g.appendChild(svgEl('circle',{cx,cy,r:1.9,fill:'none',stroke:'#c8a050','stroke-width':0.45,opacity:0.88}));
       }
-      g.appendChild(svgEl('circle',{cx,cy,r:1.4,fill:c.color,stroke:'#00000088','stroke-width':0.3,opacity:0.95}));
+      if (isSelected) {
+        g.appendChild(svgEl('circle',{cx,cy,r:2.25,fill:'none',stroke:'#ffffff','stroke-width':0.5,opacity:0.95}));
+      }
+      g.appendChild(svgEl('circle',{cx,cy,r:1.4,fill:c.color,stroke:isCurrentPlayer?'#f0d080':'#00000088','stroke-width':isCurrentPlayer?0.38:0.3,opacity:0.95}));
       layer.appendChild(g);
     });
   }
