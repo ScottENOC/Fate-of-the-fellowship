@@ -33,7 +33,7 @@ fs.writeFileSync(indexPath, index);
 
 let tests = fs.readFileSync(testsPath, 'utf8');
 const anchor = `test('UI render keeps static map layers cached and autosave debounced', () => {`;
-const addition = `test('local hot-seat UI follows the active player and lobby rendering escapes names', () => {\n  assert.ok(indexSource.includes('if (!G?.playerIds) return G?.currentPlayer ?? 0;'));\n  assert.ok(indexSource.includes('function escapeHtml(value)'));\n  assert.ok(indexSource.includes('\\${escapeHtml(p.name)}'));\n});\n\ntest('generated room codes use a longer non-confusable random suffix', () => {\n  assert.ok(indexSource.includes("const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';"));\n  assert.ok(indexSource.includes('new Uint8Array(6)'));\n  assert.ok(indexSource.includes("suffix.slice(0,3) + '-' + suffix.slice(3)"));\n});\n\n`;
+const addition = `test('local hot-seat UI follows the active player and lobby rendering escapes names', () => {\n  assert.ok(indexSource.includes('if (!G?.playerIds) return G?.currentPlayer ?? 0;'));\n  assert.ok(indexSource.includes('function escapeHtml(value)'));\n  assert.ok(indexSource.includes('escapeHtml(p.name)'));\n});\n\ntest('generated room codes use a longer non-confusable random suffix', () => {\n  assert.ok(indexSource.includes("const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';"));\n  assert.ok(indexSource.includes('new Uint8Array(6)'));\n  assert.ok(indexSource.includes("suffix.slice(0,3) + '-' + suffix.slice(3)"));\n});\n\n`;
 if (!tests.includes("test('local hot-seat UI follows the active player")) {
   if (!tests.includes(anchor)) throw new Error('test anchor missing');
   tests = tests.replace(anchor, addition + anchor);
