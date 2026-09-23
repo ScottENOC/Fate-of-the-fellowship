@@ -168,6 +168,12 @@ test('save migration adds the roguelike run-record marker', () => {
   assert.equal(evalIn(ctx, '__rr.rogueRunRecorded'), false);
 });
 
+
+test('compact portrait hand wiring is present', () => {
+  assert.ok(indexSource.includes('grid-template-columns:repeat(auto-fit,minmax(132px,1fr))'));
+  assert.ok(indexSource.includes('.card-item{padding:6px 8px;min-height:40px;font-size:.74em;justify-content:flex-start;gap:6px;line-height:1.15;overflow:hidden}'));
+});
+
 test('compact iPhone drawer and touch Nazgul wiring are present', () => {
   assert.ok(indexSource.includes('grid-template-columns:repeat(auto-fit,minmax(118px,1fr))'));
   assert.ok(indexSource.includes('grid-template-columns:repeat(3,minmax(0,1fr))'));
