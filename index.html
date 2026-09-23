@@ -126,7 +126,8 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   #map-panel{height:100%;flex:1}
   #sidebar{position:fixed;left:0;right:0;bottom:0;z-index:45;width:100%;min-width:0;height:min(52dvh,480px);border-left:none;border-top:1px solid #6a5020;border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.7);padding-bottom:env(safe-area-inset-bottom)}
   #sidebar.menu-hidden{display:none}
-  #middle{padding-bottom:12px}
+  #middle{padding:6px 8px 10px;gap:5px}
+  #char-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:4px}
   #log-area{display:none}
   #top-bar{display:none}
   #nazgul-row,#supply-row{font-size:.7em}
@@ -145,10 +146,15 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   #utility-bar .desktop-utility-btn{display:none}
   #mobile-utility-menu-btn{display:block;pointer-events:auto;min-height:32px;padding:5px 10px;border-radius:14px;background:rgba(20,15,8,.4);border:1px solid rgba(106,80,32,.55);color:#c8b080;font-family:inherit;font-size:.72em}
   .btn-sm,.action-btn,.char-card,.card-item,.token-chip{min-height:44px}
-  .action-btn{padding:9px 6px}
+  .actions-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+  .action-btn{padding:7px 4px;min-height:40px}
+  #action-hint{min-height:0!important;margin-bottom:1px!important;line-height:1.15}
   #action-footer{display:flex;gap:4px;align-items:stretch}
   #action-footer > button{flex:1 1 50%;width:auto!important;margin-top:4px;min-width:0;padding-left:6px;padding-right:6px}
-  .char-card{padding:9px 10px}
+  .char-card{padding:6px 8px;min-height:40px}
+  .char-card .char-name{font-size:.8em}
+  .char-card .char-loc{font-size:.68em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:22px}
+  .char-card .char-actions-left{top:6px;right:7px}
   .card-item{padding:9px 10px}
   .token-chip{padding:8px 10px}
 }
@@ -419,7 +425,6 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
       </div>
       <!-- Game info (scrolled to) -->
       <div>
-        <div id="nazgul-row" style="font-size:.75em;color:#806040;padding:4px 0">Nazgûl: loading…</div>
         <div id="supply-row" style="font-size:.72em;color:#706050;padding:1px 0;display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
       <!-- Log -->
@@ -2175,9 +2180,6 @@ function renderTopBar() {
   document.getElementById('player-label').textContent =
     G.playerIds ? (isMyTurn ? `✦ Your Turn — ${p.name}` : `${p.name}'s Turn`) : p.name;
   document.getElementById('player-label').style.color = isMyTurn && G.playerIds ? '#f0c040' : '#c8a050';
-  // Nazgûl summary
-  const naz = Object.entries(G.nazgul).filter(([,v])=>v>0).map(([k,v])=>`${REGIONS[k]?.name||k}:${v}`).join(' · ');
-  document.getElementById('nazgul-row').textContent = `Nazgûl: ${naz} | Eye: ${REGIONS[G.eyeRegion]?.name||G.eyeRegion}`;
   // Room code display
   const roomDisplay = document.getElementById('room-display');
   if (G.roomCode) { roomDisplay.style.display=''; document.getElementById('room-code-val').textContent = G.roomCode; }
@@ -2938,6 +2940,16 @@ const NAZ_CENTERS = {
   'haradwaith':       { x:50, y:82 },
 };
 
+function showNazgulDistribution() {
+  if (!G) return;
+  const rows = Object.entries(G.nazgul || {})
+    .filter(([,count]) => count > 0)
+    .sort(([a],[b]) => (REGIONS[a]?.name || a).localeCompare(REGIONS[b]?.name || b))
+    .map(([id,count]) => '<div style="display:flex;justify-content:space-between;gap:16px;padding:5px 0;border-bottom:1px solid #2a2010"><span>'+escapeHtml(REGIONS[id]?.name || id)+'</span><strong>'+count+'</strong></div>')
+    .join('');
+  showModal('Nazgûl', rows || 'No Nazgûl are currently on the map.');
+}
+
 function renderEyeAndNazgul(layer) {
   const nazWrapper = svgEl('g', { class:'nazgul-marker' });
   layer.appendChild(nazWrapper);
@@ -2947,7 +2959,8 @@ function renderEyeAndNazgul(layer) {
   if (ec) {
     const g = svgEl('g', {});
     g.style.pointerEvents = 'all';
-    g.style.cursor = 'default';
+    g.style.cursor = 'pointer';
+    g.onclick = e => { e.stopPropagation(); showNazgulDistribution(); };
     // Outer flame-glow ring
     g.appendChild(svgEl('ellipse',{cx:ec.x, cy:ec.y, rx:3.0, ry:1.8,
       fill:'none', stroke:'#ff6600', 'stroke-width':0.6, opacity:0.5}));
@@ -3000,7 +3013,10 @@ function renderEyeAndNazgul(layer) {
     if (!count || regionId === G.eyeRegion) continue; // eye region shows count on the eye
     const rc = NAZ_CENTERS[regionId];
     if (!rc) continue;
-    const g = svgEl('g',{});
+    const g = svgEl('g',{cursor:'pointer'});
+    g.style.pointerEvents = 'all';
+    g.onclick = e => { e.stopPropagation(); showNazgulDistribution(); };
+    g.appendChild(svgEl('circle',{cx:rc.x,cy:rc.y,r:2.8,fill:'transparent',stroke:'none',class:'touch-hit'}));
     g.appendChild(svgEl('circle',{cx:rc.x, cy:rc.y, r:1.6,
       fill:'#1a0a00', stroke:'#604020', 'stroke-width':0.35, opacity:0.82}));
     const t = document.createElementNS('http://www.w3.org/2000/svg','text');
