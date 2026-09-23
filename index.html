@@ -115,6 +115,10 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 .mobile-quick-btn{background:rgba(26,21,16,.96);border:1px solid #6a5020;color:#d4c4a0;border-radius:16px;padding:7px 10px;font-family:inherit;font-size:.76em;white-space:nowrap}
 .mobile-quick-btn:disabled{opacity:.35}
 .mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
+#mobile-action-sheet{display:none}
+.mobile-quick-btn{background:rgba(26,21,16,.96);border:1px solid #6a5020;color:#d4c4a0;border-radius:16px;padding:7px 10px;font-family:inherit;font-size:.76em;white-space:nowrap}
+.mobile-quick-btn:disabled{opacity:.35}
+.mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
 
 /* ── SIDEBAR HIDDEN STATE ── */
 #sidebar.menu-hidden{display:none}
@@ -1642,6 +1646,68 @@ let UI = {
   needSearchDecision: false,
   show: { routes: true, locations: true, nazgul: true, characters: true, troops: true },
 };
+
+
+function centerMapOnLocation(locId, minZoom = 2.2) {
+  const loc = LOCS[locId];
+  const panel = document.getElementById('map-panel');
+  const svg = document.getElementById('map-svg');
+  if (!loc || !panel || !svg) return;
+  const zoom = Math.max(minZoom, mapView.zoom);
+  const x = (loc.x / 100) * (svg.offsetWidth || panel.offsetWidth);
+  const y = (loc.y / 100) * (svg.offsetHeight || panel.offsetHeight);
+  mapView.zoom = zoom;
+  mapView.panX = panel.offsetWidth / 2 - x * zoom;
+  mapView.panY = panel.offsetHeight / 2 - y * zoom;
+  clampPan(); applyMapTransform();
+}
+
+function centerOnActiveCharacter() {
+  if (!G) return;
+  const p = G.players[myPlayerIdx()] || G.players[G.currentPlayer];
+  const cid = UI.selectedChar || G.turn?.primaryChar || p?.chars?.find(id => G.charState?.[id]?.alive);
+  const locId = cid && G.charState?.[cid]?.location;
+  if (locId) centerMapOnLocation(locId);
+}
+
+function openFullActionsMobile() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar?.classList.remove('menu-hidden');
+  const btn = document.getElementById('menu-toggle-btn');
+  if (btn) btn.textContent = '☰ Hide Menu';
+  document.getElementById('action-grid')?.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+function renderMobileActionSheet() {
+  const el = document.getElementById('mobile-action-sheet');
+  if (!el || !G) return;
+  const cid = UI.selectedChar;
+  if (!cid || !CHARS[cid] || !G.charState?.[cid]) {
+    el.innerHTML = '<div class="mobile-char-summary">Tap a character to show quick actions.</div><button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>';
+    return;
+  }
+  const cs = G.charState[cid];
+  const loc = G.locState[cs.location];
+  const left = G.turn?.charActions?.[cid] ?? G.players[myPlayerIdx()]?.actionsPerChar ?? 4;
+  const can = canAct(cid);
+  const friendly = loc ? Object.values(loc.friendly || {}).reduce((a,b)=>a+b,0) : 0;
+  const hasRegionCard = (G.players[myPlayerIdx()]?.hand || []).some(c => c.type === 'region');
+  const travelOK = can && validTravelTargets(cid).length > 0;
+  const prepareOK = can && !!loc?.isHaven && hasRegionCard;
+  const musterOK = can && !!LOCS[cs.location]?.musterType && !loc?.isShadowStronghold;
+  const attackOK = can && friendly > 0 && (loc?.shadowTroops || 0) > 0;
+  const captureOK = can && !!LOCS[cs.location]?.capturable && (loc?.shadowTroops || 0) === 0 && friendly > 0;
+  const summary = '<div class="mobile-char-summary"><strong>'+CHARS[cid].name+'</strong>'+ (LOCS[cs.location]?.name || cs.location) +' · '+left+' action'+(left===1?'':'s')+'</div>';
+  const btn = (label, action, ok, primary=false) => '<button class="mobile-quick-btn'+(primary?' primary':'')+'" '+(ok?'':'disabled ')+'onclick="clickAction(\''+action+'\')">'+label+'</button>';
+  el.innerHTML = summary +
+    btn('Travel','travel',travelOK,true) +
+    btn('Prepare','prepare',prepareOK) +
+    btn('Muster','muster',musterOK) +
+    btn('Attack','attack',attackOK) +
+    (captureOK ? btn('Capture','capture',true) : '') +
+    '<button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>' +
+    '<button class="mobile-quick-btn" onclick="openFullActionsMobile()">More…</button>';
+}
 
 
 function centerMapOnLocation(locId, minZoom = 2.2) {
