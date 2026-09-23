@@ -245,6 +245,11 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
     <p id="shadow-burden-summary" style="font-size:.76em;color:#706050;margin:0 0 8px"></p>
     <div id="shadow-burden-choices"></div>
   </div>
+  <div class="setup-card" id="rogue-history-panel" style="display:none">
+    <h3>Campaign Chronicle</h3>
+    <p id="rogue-history-summary" style="font-size:.78em;color:#806850;margin:0 0 8px"></p>
+    <button class="btn btn-sm" onclick="showCampaignChronicle()">📜 View Chronicle</button>
+  </div>
   <div class="setup-card">
     <h3>Card Preferences <span style="font-size:.7em;font-weight:normal;color:#706050">(optional)</span></h3>
     <p style="font-size:.76em;color:#706050;margin:0 0 10px">Prioritised cards are always included first. Avoid cards are only used when there aren't enough others to fill the required count.</p>
@@ -414,6 +419,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
       <button class="btn btn-sm" onclick="saveGame();cloudSave();showToast('💾 Saved')">💾 Save</button>
       <button class="btn btn-sm" id="sync-btn" onclick="syncFromCloud()" style="color:#507050;border-color:#507050">☁ Sync</button>
       <button class="btn btn-sm" style="color:#906040;border-color:#906040" onclick="if(confirm('Return to setup? Unsaved progress will be lost.'))location.reload()">↩ Menu</button>
+      <button class="btn btn-sm" onclick="showCampaignChronicle()">📜</button>
       <button class="btn btn-sm" style="color:#507050;border-color:#507050;margin-left:auto" onclick="devTools()">🔧</button>
     </div>
   </div>
@@ -580,6 +586,7 @@ const LP_KEY     = 'fof-legacy-points';
 const BOONS_KEY  = 'fof-boons';
 const SAVE_KEY   = 'fof-save';
 const BURDEN_PREF_KEY = 'fof-shadow-burden-prefs';
+const ROGUE_HISTORY_KEY = 'fof-rogue-history';
 
 function getWinRecord() {
   try { return JSON.parse(localStorage.getItem(RECORD_KEY) || '{}'); } catch { return {}; }
@@ -635,8 +642,11 @@ function buildShadowBurdenChoices() {
   const slots = burdenSlotsForDifficulty(difficulty);
   if (slots <= 0) { panel.style.display = 'none'; choices.innerHTML = ''; return; }
   panel.style.display = 'block';
-  summary.textContent = slots + ' burden' + (slots===1?'':'s') + ' active at this tier. New slots unlock at Legendary +2, +5 and +8.';
+  const offers = getBurdenOfferIds(difficulty);
+  summary.textContent = slots + ' burden' + (slots===1?'':'s') + ' active at this tier. Choose from ' + offers.length + ' campaign offer' + (offers.length===1?'':'s') + '; offers rotate toward less-used burdens after each completed Legendary run.';
   const prefs = getBurdenPrefs();
+  const offeredIds = getBurdenOfferIds(difficulty);
+  const offered = offeredIds.map(id => SHADOW_BURDENS.find(b => b.id === id)).filter(Boolean);
   const used = new Set();
   choices.innerHTML = '';
   for (let i = 0; i < slots; i++) {
@@ -646,8 +656,8 @@ function buildShadowBurdenChoices() {
     sel.id = 'shadow-burden-' + i;
     sel.style.width = '100%';
     let selected = prefs[i];
-    if (!SHADOW_BURDENS.some(b => b.id === selected) || used.has(selected)) selected = SHADOW_BURDENS.find(b => !used.has(b.id))?.id;
-    for (const b of SHADOW_BURDENS) {
+    if (!offered.some(b => b.id === selected) || used.has(selected)) selected = offered.find(b => !used.has(b.id))?.id;
+    for (const b of offered) {
       if (used.has(b.id) && b.id !== selected) continue;
       const o = document.createElement('option'); o.value = b.id; o.textContent = b.name; o.selected = b.id === selected; sel.appendChild(o);
     }
@@ -663,6 +673,101 @@ function buildShadowBurdenChoices() {
     wrap.appendChild(sel); wrap.appendChild(desc); choices.appendChild(wrap);
   }
   localStorage.setItem(BURDEN_PREF_KEY, JSON.stringify(getSelectedShadowBurdens()));
+}
+
+function getRogueHistory() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(ROGUE_HISTORY_KEY) || '[]');
+    return Array.isArray(rows) ? rows : [];
+  } catch { return []; }
+}
+
+function saveRogueHistory(rows) {
+  localStorage.setItem(ROGUE_HISTORY_KEY, JSON.stringify((rows || []).slice(-50)));
+}
+
+function getBurdenOfferIds(difficulty) {
+  const slots = burdenSlotsForDifficulty(difficulty);
+  if (slots <= 0) return [];
+  const history = getRogueHistory().filter(r => (r.plusLevel || 0) > 0);
+  const usage = {};
+  for (const b of SHADOW_BURDENS) usage[b.id] = 0;
+  for (const run of history) for (const id of (run.burdens || [])) if (usage[id] !== undefined) usage[id]++;
+  const rotation = history.length % Math.max(1, SHADOW_BURDENS.length);
+  const ordered = SHADOW_BURDENS.map((b, i) => ({ id:b.id, used:usage[b.id] || 0, tie:(i - rotation + SHADOW_BURDENS.length) % SHADOW_BURDENS.length }))
+    .sort((a,b) => a.used - b.used || a.tie - b.tie);
+  return ordered.slice(0, Math.min(SHADOW_BURDENS.length, slots + 2)).map(x => x.id);
+}
+
+function recordRoguelikeRunIfNeeded() {
+  if (!G || G.phase !== 'gameover' || G.rogueRunRecorded) return null;
+  G.rogueRunRecorded = true;
+  if (!String(G.difficulty || '').startsWith('legendary')) return null;
+  const objectivesDone = (G.objectives || []).filter(o => o.done).length;
+  const row = {
+    id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7),
+    endedAt: Date.now(),
+    result: G.winner === 'players' ? 'win' : 'loss',
+    difficulty: G.difficulty,
+    plusLevel: G.plusLevel || 0,
+    burdens: Array.isArray(G.shadowBurdens) ? [...G.shadowBurdens] : [],
+    hope: G.hope || 0,
+    maxHope: G.maxHope || 0,
+    objectivesDone,
+    objectivesTotal: (G.objectives || []).length,
+    capturedStrongholds: [...(G.capturedStrongholds || [])],
+    frodoLocation: G.charState?.['frodo-sam']?.location || null,
+    characters: (G.players || []).flatMap(p => p.chars || []),
+  };
+  const history = getRogueHistory();
+  history.push(row);
+  saveRogueHistory(history);
+  G.lastRogueRunId = row.id;
+  renderRogueHistoryPanel();
+  return row;
+}
+
+function rogueRunSummaryHtml(run) {
+  if (!run) return '<em>No Legendary campaign runs recorded yet.</em>';
+  const burdenNames = (run.burdens || []).map(id => SHADOW_BURDENS.find(b => b.id === id)?.name || id);
+  const strongholds = (run.capturedStrongholds || []).map(id => LOCS[id]?.name || id);
+  return '<strong>' + (run.result === 'win' ? 'Victory' : 'Defeat') + ' — ' + escapeHtml(run.difficulty || 'Legendary') + '</strong><br>' +
+    'Hope: ' + (run.hope ?? 0) + '/' + (run.maxHope ?? 0) + '<br>' +
+    'Objectives: ' + (run.objectivesDone ?? 0) + '/' + (run.objectivesTotal ?? 0) + '<br>' +
+    'Burdens: ' + (burdenNames.length ? burdenNames.map(escapeHtml).join(', ') : 'none') + '<br>' +
+    'Strongholds taken: ' + (strongholds.length ? strongholds.map(escapeHtml).join(', ') : 'none') + '<br>' +
+    'Frodo: ' + escapeHtml(LOCS[run.frodoLocation]?.name || run.frodoLocation || 'unknown');
+}
+
+function showCampaignChronicle() {
+  const history = getRogueHistory();
+  const last = history[history.length - 1];
+  const wins = history.filter(r => r.result === 'win').length;
+  const plusRuns = history.filter(r => (r.plusLevel || 0) > 0);
+  const best = plusRuns.reduce((m,r) => Math.max(m, r.result === 'win' ? (r.plusLevel || 0) : 0), 0);
+  let html = '<div style="margin-bottom:10px"><strong>' + history.length + ' runs</strong> · ' + wins + ' wins · highest Legendary+ victory: +' + best + '</div>';
+  if (last) html += rogueRunSummaryHtml(last);
+  if (history.length > 1) {
+    html += '<hr><div style="font-size:.82em;color:#907850">Recent runs</div>';
+    for (const run of history.slice(-6).reverse()) {
+      const d = new Date(run.endedAt || 0).toLocaleDateString();
+      html += '<div style="padding:4px 0;border-bottom:1px solid #2a2010;font-size:.8em">' + (run.result === 'win' ? '✓' : '✗') + ' ' + escapeHtml(run.difficulty) + ' · ' + d + ' · ' + (run.objectivesDone || 0) + '/' + (run.objectivesTotal || 0) + ' objectives</div>';
+    }
+  }
+  showModal('📜 Campaign Chronicle', html);
+}
+
+function renderRogueHistoryPanel() {
+  const panel = document.getElementById('rogue-history-panel');
+  const summary = document.getElementById('rogue-history-summary');
+  if (!panel || !summary) return;
+  const history = getRogueHistory();
+  if (!history.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  const wins = history.filter(r => r.result === 'win').length;
+  const best = history.reduce((m,r) => Math.max(m, r.result === 'win' ? (r.plusLevel || 0) : 0), 0);
+  const last = history[history.length - 1];
+  summary.textContent = history.length + ' Legendary campaign run' + (history.length===1?'':'s') + ' · ' + wins + ' win' + (wins===1?'':'s') + ' · best +' + best + ' · last: ' + (last.result === 'win' ? 'victory' : 'defeat') + ' on ' + last.difficulty;
 }
 
 function buildDifficultySelect() {
@@ -1688,6 +1793,7 @@ window.addEventListener('resize', () => { if (G) { alignSvgToImage(); render(); 
 // Initialise UI on page load
 (function initSetupUI() {
   buildDifficultySelect();
+  renderRogueHistoryPanel();
   if (localStorage.getItem(SAVE_KEY)) {
     document.getElementById('load-btn').style.display = 'inline-block';
   }
@@ -1966,7 +2072,7 @@ function render() {
   try { renderMobileActionSheet(); } catch(e) { console.error('renderMobileActionSheet:', e); }
   try { renderLog(); } catch(e) { console.error('renderLog:', e); }
   try { renderMap(); } catch(e) { console.error('renderMap:', e); }
-  if (G.phase === 'gameover') showGameover();
+  if (G.phase === 'gameover') { recordRoguelikeRunIfNeeded(); showGameover(); }
   // Mouth of Sauron tribute prompt
   if (G?.ui?.pendingMouthTribute) {
     G.ui.pendingMouthTribute = false;
