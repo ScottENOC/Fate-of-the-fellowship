@@ -95,7 +95,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 .actions-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .action-btn{background:#1a1510;border:1px solid #4a3820;color:#c8a050;padding:6px 4px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:.78em;text-align:center;transition:all .15s}
 .action-btn:hover:not(:disabled){background:#2a2010;border-color:#c8a050}
-.action-btn:disabled{opacity:.3;cursor:default}
+.action-btn:disabled,.action-btn.unavailable{opacity:.42;cursor:help}
 .action-btn.active-action{border-color:#f0c040;background:#2a2010}
 #phase-btn{width:100%;padding:8px;margin-top:4px;font-size:.9em}
 
@@ -107,41 +107,44 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 /* ── MENU TOGGLE BUTTON (floats on map) ── */
 #menu-toggle-btn{position:absolute;bottom:10px;left:10px;z-index:20;background:rgba(20,15,8,.88);border:1px solid #4a3820;color:#c8a050;padding:5px 13px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:.78em;transition:all .15s}
 #menu-toggle-btn:hover{border-color:#c8a050;background:rgba(30,22,10,.97)}
+#mobile-status-hud{display:none}
 #mobile-action-sheet{display:none}
-.mobile-quick-btn{background:rgba(26,21,16,.96);border:1px solid #6a5020;color:#d4c4a0;border-radius:16px;padding:7px 10px;font-family:inherit;font-size:.76em;white-space:nowrap}
-.mobile-quick-btn:disabled{opacity:.35}
+.mobile-quick-btn{background:rgba(26,21,16,.97);border:1px solid #6a5020;color:#d4c4a0;border-radius:18px;min-height:44px;padding:8px 13px;font-family:inherit;font-size:.78em;white-space:nowrap;touch-action:manipulation}
 .mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
-#mobile-action-sheet{display:none}
-.mobile-quick-btn{background:rgba(26,21,16,.96);border:1px solid #6a5020;color:#d4c4a0;border-radius:16px;padding:7px 10px;font-family:inherit;font-size:.76em;white-space:nowrap}
-.mobile-quick-btn:disabled{opacity:.35}
-.mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
-#mobile-action-sheet{display:none}
-.mobile-quick-btn{background:rgba(26,21,16,.96);border:1px solid #6a5020;color:#d4c4a0;border-radius:16px;padding:7px 10px;font-family:inherit;font-size:.76em;white-space:nowrap}
-.mobile-quick-btn:disabled{opacity:.35}
-.mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
-
-/* ── SIDEBAR HIDDEN STATE ── */
+.mobile-quick-btn.more{border-color:#806040}
+.mobile-task{min-width:130px;max-width:165px;font-size:.72em;color:#a89068;line-height:1.25;flex-shrink:0}
+.mobile-task strong{display:block;color:#ead8a8;font-size:1.08em;margin-bottom:2px}
 #sidebar.menu-hidden{display:none}
 
 /* ── PORTRAIT / NARROW LAYOUT ── */
 @media (orientation:portrait){
-  #game{flex-direction:column}
-  #map-panel{flex:none;height:52vh}
-  #sidebar{width:100%;min-width:unset;height:48vh;border-left:none;border-top:2px solid #3a2810;flex-direction:column}
-  #sidebar.menu-hidden~*,#sidebar.menu-hidden{display:none}
-  #game:has(#sidebar.menu-hidden) #map-panel{height:100%;flex:1}
-  #log-area{height:80px}
-  #top-bar{padding:5px 10px;gap:3px}
-  .track-row{font-size:.78em}
+  body{height:100dvh}
+  #setup{height:100dvh;padding-top:calc(20px + env(safe-area-inset-top));padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+  #game{position:relative;display:flex;flex-direction:column;height:100dvh}
+  #map-panel{height:100%;flex:1}
+  #sidebar{position:fixed;left:0;right:0;bottom:0;z-index:45;width:100%;min-width:0;height:min(68dvh,620px);border-left:none;border-top:1px solid #6a5020;border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.7);padding-bottom:env(safe-area-inset-bottom)}
+  #sidebar.menu-hidden{display:none}
+  #middle{padding-bottom:12px}
+  #log-area{display:none}
+  #top-bar{padding:8px 12px;gap:4px}
+  .track-row{font-size:.8em}
   .track-bar{height:9px}
-  #nazgul-row{font-size:.68em}
-  #supply-row{font-size:.65em}
+  #nazgul-row,#supply-row{font-size:.7em}
   .setup-card{width:calc(100vw - 32px);max-width:460px}
-  #toast{bottom:50vh}
-  #menu-toggle-btn{bottom:auto;top:8px;left:10px}
-  #mobile-action-sheet{display:flex;position:absolute;left:8px;right:8px;bottom:8px;z-index:18;background:rgba(14,12,8,.94);border:1px solid #4a3820;border-radius:12px;padding:8px;gap:6px;align-items:center;overflow-x:auto;box-shadow:0 4px 16px rgba(0,0,0,.55);backdrop-filter:blur(6px)}
-  #mobile-action-sheet .mobile-char-summary{min-width:116px;max-width:150px;font-size:.7em;color:#907850;line-height:1.25;flex-shrink:0}
-  #mobile-action-sheet .mobile-char-summary strong{display:block;color:#d4c4a0;font-size:1.08em}
+  #toast{bottom:calc(88px + env(safe-area-inset-bottom));max-width:calc(100vw - 24px);white-space:normal;text-align:center}
+  #menu-toggle-btn{top:calc(8px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));bottom:auto;min-width:44px;min-height:44px;padding:8px 12px;border-radius:22px}
+  #map-toggles{top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right))}
+  #map-toggles-btn{width:44px;height:44px;border-radius:22px;font-size:18px}
+  #map-toggles-menu{top:50px}
+  #mobile-status-hud{display:flex;position:absolute;z-index:17;top:calc(60px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);align-items:center;gap:8px;background:rgba(14,12,8,.92);border:1px solid #4a3820;border-radius:18px;padding:7px 11px;font-size:.72em;color:#c8b080;box-shadow:0 3px 14px rgba(0,0,0,.45);backdrop-filter:blur(6px);max-width:calc(100vw - 110px);white-space:nowrap}
+  #mobile-status-hud strong{color:#ead8a8}
+  #mobile-action-sheet{display:flex;position:absolute;left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));bottom:calc(8px + env(safe-area-inset-bottom));z-index:18;background:rgba(14,12,8,.95);border:1px solid #4a3820;border-radius:14px;padding:8px;gap:6px;align-items:center;overflow-x:auto;box-shadow:0 4px 18px rgba(0,0,0,.6);backdrop-filter:blur(7px);scrollbar-width:none}
+  #mobile-action-sheet::-webkit-scrollbar{display:none}
+  .btn-sm,.action-btn,.char-card,.card-item,.token-chip{min-height:44px}
+  .action-btn{padding:9px 6px}
+  .char-card{padding:9px 10px}
+  .card-item{padding:9px 10px}
+  .token-chip{padding:8px 10px}
 }
 
 /* ── LOBBY SCREEN ── */
@@ -320,8 +323,9 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 <!-- ── GAME SCREEN ─────────────────────────────────────────── -->
 <div id="game">
   <div id="map-panel">
-    <button id="menu-toggle-btn" onclick="toggleSidebar()">☰ Hide Menu</button>
-    <div id="mobile-action-sheet"><div class="mobile-char-summary">Tap a character to show quick actions.</div></div>
+    <button id="menu-toggle-btn" onclick="toggleSidebar()">☰ Menu</button>
+    <div id="mobile-status-hud" aria-live="polite"></div>
+    <div id="mobile-action-sheet"><div class="mobile-task">Tap a character to show actions.</div></div>
     <div id="map-wrap">
       <img id="map-img" src="map.jpg" alt="Middle-earth map">
       <svg id="map-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="xMinYMin meet">
@@ -1863,39 +1867,40 @@ function openFullActionsMobile() {
   const sidebar = document.getElementById('sidebar');
   sidebar?.classList.remove('menu-hidden');
   const btn = document.getElementById('menu-toggle-btn');
-  if (btn) btn.textContent = '☰ Hide Menu';
+  if (btn) btn.textContent = '☰ Close';
   document.getElementById('action-grid')?.scrollIntoView({ behavior:'smooth', block:'center' });
 }
 
 function renderMobileActionSheet() {
   const el = document.getElementById('mobile-action-sheet');
   if (!el || !G) return;
-  const cid = UI.selectedChar;
-  if (!cid || !CHARS[cid] || !G.charState?.[cid]) {
-    el.innerHTML = '<div class="mobile-char-summary">Tap a character to show quick actions.</div><button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>';
+  const sc = UI.selectedChar;
+  const taskForPending = () => {
+    if (UI.pendingAction === 'travel' || UI.pendingAction === 'eomer-bonus-travel') return 'Choose a highlighted destination on the map';
+    if (UI.pendingAction === 'prepare') return 'Choose a region card from your hand';
+    if (UI.pendingAction) return 'Choose a target for ' + UI.pendingAction;
+    return null;
+  };
+  if (!sc || !CHARS[sc] || !G.charState?.[sc]) {
+    const task = taskForPending() || 'Tap one of your characters on the map or open More';
+    el.innerHTML = '<div class="mobile-task"><strong>What next?</strong>'+escapeHtml(task)+'</div><button class="mobile-quick-btn more" onclick="openFullActionsMobile()">More…</button><button class="mobile-quick-btn more" onclick="showRecentLog()">History</button>';
     return;
   }
-  const cs = G.charState[cid];
-  const loc = G.locState[cs.location];
-  const left = G.turn?.charActions?.[cid] ?? G.players[myPlayerIdx()]?.actionsPerChar ?? 4;
-  const can = canAct(cid);
+  const cs = G.charState[sc], loc = G.locState[cs.location], locData = LOCS[cs.location];
+  const left = G.turn?.charActions?.[sc] ?? G.players[myPlayerIdx()]?.actionsPerChar ?? 4;
+  const can = canAct(sc);
   const friendly = loc ? Object.values(loc.friendly || {}).reduce((a,b)=>a+b,0) : 0;
   const hasRegionCard = (G.players[myPlayerIdx()]?.hand || []).some(c => c.type === 'region');
-  const travelOK = can && validTravelTargets(cid).length > 0;
-  const prepareOK = can && !!loc?.isHaven && hasRegionCard;
-  const musterOK = can && !!LOCS[cs.location]?.musterType && !loc?.isShadowStronghold;
-  const attackOK = can && friendly > 0 && (loc?.shadowTroops || 0) > 0;
-  const captureOK = can && !!LOCS[cs.location]?.capturable && (loc?.shadowTroops || 0) === 0 && friendly > 0;
-  const summary = '<div class="mobile-char-summary"><strong>'+CHARS[cid].name+'</strong>'+ (LOCS[cs.location]?.name || cs.location) +' · '+left+' action'+(left===1?'':'s')+'</div>';
-  const btn = (label, action, ok, primary=false) => '<button class="mobile-quick-btn'+(primary?' primary':'')+'" '+(ok?'':'disabled ')+'onclick="clickAction(\''+action+'\')">'+label+'</button>';
-  el.innerHTML = summary +
-    btn('Travel','travel',travelOK,true) +
-    btn('Prepare','prepare',prepareOK) +
-    btn('Muster','muster',musterOK) +
-    btn('Attack','attack',attackOK) +
-    (captureOK ? btn('Capture','capture',true) : '') +
-    '<button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>' +
-    '<button class="mobile-quick-btn" onclick="openFullActionsMobile()">More…</button>';
+  const buttons = [];
+  const add = (label,key,ok,primary=false) => { if (ok) buttons.push('<button class="mobile-quick-btn'+(primary?' primary':'')+'" onclick="clickAction(\''+key+'\')">'+label+'</button>'); };
+  add('Travel','travel',can && validTravelTargets(sc).length>0,true);
+  add('Attack','attack',can && friendly>0 && (loc?.shadowTroops||0)>0,true);
+  add('Capture','capture',can && !!locData?.capturable && (loc?.shadowTroops||0)===0 && friendly>0,true);
+  add('Prepare','prepare',can && !!loc?.isHaven && hasRegionCard);
+  add('Muster ♥','muster',can && !!locData?.musterType && !loc?.isShadowStronghold);
+  if (sc==='frodo-sam' && cs.location==='mount-doom') add('Destroy Ring!','destroy-ring',can,true);
+  const task = taskForPending() || ((CHARS[sc]?.name||sc)+' at '+(LOCS[cs.location]?.name||cs.location)+' · '+left+' action'+(left===1?'':'s')+' left');
+  el.innerHTML = '<div class="mobile-task"><strong>'+(UI.pendingAction?'What next?':escapeHtml(CHARS[sc]?.name||sc))+'</strong>'+escapeHtml(task)+'</div>' + buttons.slice(0,4).join('') + '<button class="mobile-quick-btn more" onclick="centerOnActiveCharacter()">Centre</button><button class="mobile-quick-btn more" onclick="openFullActionsMobile()">More…</button>';
 }
 
 
@@ -2106,6 +2111,11 @@ function renderTopBar() {
   if (G.roomCode) { roomDisplay.style.display=''; document.getElementById('room-code-val').textContent = G.roomCode; }
   else { roomDisplay.style.display='none'; }
   // Supply row
+  const mh = document.getElementById('mobile-status-hud');
+  if (mh) {
+    const active = UI.selectedChar ? (CHARS[UI.selectedChar]?.name || UI.selectedChar) : (G.players[G.currentPlayer]?.name || 'Turn');
+    mh.innerHTML = '<strong>♥ ' + G.hope + '/' + G.maxHope + '</strong><span>☠ ' + G.threatRate + '/' + G.maxThreat + '</span><span>👁 ' + escapeHtml(REGIONS[G.eyeRegion]?.name || G.eyeRegion) + '</span><span>' + escapeHtml(active) + '</span>';
+  }
   const sr = document.getElementById('supply-row');
   if (sr) {
     const bits = [
@@ -2327,9 +2337,10 @@ function renderActions() {
     const btn = document.createElement('button');
     btn.className = 'action-btn' + (UI.pendingAction===a.key?' active-action':'');
     btn.textContent = a.label;
-    btn.disabled = !a.ok;
+    btn.disabled = false;
     btn.title = a.tip;
-    btn.onclick = () => clickAction(a.key);
+    if (!a.ok) { btn.classList.add('unavailable'); btn.setAttribute('aria-disabled','true'); }
+    btn.onclick = () => a.ok ? clickAction(a.key) : explainUnavailableAction(a.label, a.tip);
     el.appendChild(btn);
   }
 
@@ -2703,8 +2714,9 @@ function renderLocations() {
     g.onmouseleave = hideTooltip;
     g.addEventListener('mousemove', moveTooltip);
 
+    g.appendChild(svgEl('circle',{cx:loc.x,cy:loc.y,r:2.35,fill:'transparent',stroke:'none',class:'touch-hit'}));
     if (isValidTarget) {
-      g.appendChild(svgEl('circle',{cx:loc.x,cy:loc.y,r:r+0.7,fill:'none',stroke:'#f0e060','stroke-width':0.5,class:'valid-target'}));
+      g.appendChild(svgEl('circle',{cx:loc.x,cy:loc.y,r:r+0.9,fill:'none',stroke:'#f0e060','stroke-width':0.55,class:'valid-target'}));
     }
     if (isCharHere) {
       g.appendChild(svgEl('circle',{cx:loc.x,cy:loc.y,r:r+0.5,fill:'none',stroke:'#ffffff','stroke-width':0.45,opacity:0.8}));
@@ -3063,6 +3075,10 @@ function selectChar(cid) {
   UI.selectedChar = cid === UI.selectedChar ? null : cid;
   UI.validTargets = [];
   render();
+  if (window.matchMedia?.('(orientation: portrait)').matches) {
+    const locId = G?.charState?.[cid]?.location;
+    if (locId) centerMapOnLocation(locId, 2.5);
+  }
 }
 
 function selectCard(cardId) {
@@ -3532,10 +3548,28 @@ function showBoromirReplacementModal(candidates, playerIdx) {
     `A new hero joins ${playerName}'s cause! Draw a character from the box:`, btns);
 }
 
+function showLocationDetails(locId) {
+  const loc = LOCS[locId], ls = G?.locState?.[locId];
+  if (!loc || !ls) return;
+  const friendly = Object.entries(ls.friendly || {}).filter(([,n])=>n>0).map(([t,n])=>n+' '+t).join(', ') || 'none';
+  const shadow = ls.shadowTroops || 0;
+  const chars = Object.entries(G.charState || {}).filter(([,cs])=>cs.alive && cs.location===locId).map(([id])=>CHARS[id]?.name||id).join(', ') || 'none';
+  const conn = CONNECTIONS.filter(c=>c.a===locId||c.b===locId).map(c=>LOCS[c.a===locId?c.b:c.a]?.name).filter(Boolean).join(', ');
+  showModal(loc.name, '<strong>Region:</strong> '+escapeHtml(REGIONS[loc.region]?.name||loc.region)+'<br><strong>Friendly:</strong> '+escapeHtml(friendly)+'<br><strong>Shadow:</strong> '+shadow+'<br><strong>Characters:</strong> '+escapeHtml(chars)+'<br><strong>Connections:</strong> '+escapeHtml(conn||'none'));
+}
+
+function showRecentLog() {
+  const rows = (G?.log || []).slice(0, 30);
+  const html = rows.length ? rows.map(x=>'<div style="padding:5px 0;border-bottom:1px solid #2a2010">'+escapeHtml(x.msg||String(x))+'</div>').join('') : '<em>No events yet.</em>';
+  showModal('Game History', html);
+}
+
+function explainUnavailableAction(label, tip) { showToast('ⓘ ' + label + ': ' + tip); }
+
 function clickLocation(locId) {
   if (isPanDrag) { isPanDrag = false; return; } // suppress click after a drag
   hideTooltip();
-  if (!UI.pendingAction) return;
+  if (!UI.pendingAction) { showLocationDetails(locId); return; }
 
   if (UI.pendingAction === 'travel') {
     if (!UI.validTargets.includes(locId)) return;

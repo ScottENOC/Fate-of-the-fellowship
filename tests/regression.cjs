@@ -167,6 +167,16 @@ test('save migration adds the roguelike run-record marker', () => {
   vm.runInContext('delete G.rogueRunRecorded; __rr = migrateGameState(G)', ctx);
   assert.equal(evalIn(ctx, '__rr.rogueRunRecorded'), false);
 });
+test('iPhone map-first UI wiring is present', () => {
+  assert.ok(indexSource.includes('id="mobile-status-hud"'));
+  assert.ok(indexSource.includes('height:min(68dvh,620px)'));
+  assert.ok(indexSource.includes('env(safe-area-inset-bottom)'));
+  assert.ok(indexSource.includes('function showLocationDetails(locId)'));
+  assert.ok(indexSource.includes('function explainUnavailableAction(label, tip)'));
+  assert.ok(indexSource.includes("buttons.slice(0,4).join('')"));
+  assert.ok(indexSource.includes("class:'touch-hit'"));
+});
+
 test('free-people lieutenant boon state is wired into newGame', () => {
   const ctx = makeContext();
   const g = startGame(ctx, {
