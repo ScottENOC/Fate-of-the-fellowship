@@ -1,0 +1,34 @@
+name: Apply iPhone compact hand
+on:
+  push:
+    branches: [feature/iphone-compact-hand]
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/apply-iphone-compact-hand.cjs
+      - run: npm test
+      - name: Verify compact hand invariants
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('index.html','utf8');
+          for(const n of [
+            'grid-template-columns:repeat(auto-fit,minmax(132px,1fr))',
+            '.card-item{padding:6px 8px;min-height:40px;font-size:.74em;justify-content:flex-start;gap:6px;line-height:1.15;overflow:hidden}',
+            '.card-item{white-space:nowrap;text-overflow:ellipsis}'
+          ]) if(!s.includes(n)) throw new Error('missing invariant: '+n);
+          NODE
+      - name: Commit source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html tests/regression.cjs
+          git commit -m "Compact portrait hand layout [iphone-compact-hand]"
+          git push
