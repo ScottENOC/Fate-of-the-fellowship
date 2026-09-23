@@ -251,6 +251,18 @@ test('character-specific objectives reference real characters', () => {
   assert.deepEqual(Array.from(missing), []);
 });
 
+test('local hot-seat UI follows the active player and lobby rendering escapes names', () => {
+  assert.ok(indexSource.includes('if (!G?.playerIds) return G?.currentPlayer ?? 0;'));
+  assert.ok(indexSource.includes('function escapeHtml(value)'));
+  assert.ok(indexSource.includes('escapeHtml(p.name)'));
+});
+
+test('generated room codes use a longer non-confusable random suffix', () => {
+  assert.ok(indexSource.includes("const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';"));
+  assert.ok(indexSource.includes('new Uint8Array(6)'));
+  assert.ok(indexSource.includes("suffix.slice(0,3) + '-' + suffix.slice(3)"));
+});
+
 test('UI render keeps static map layers cached and autosave debounced', () => {
   assert.ok(indexSource.includes('let mapStaticBuilt = false;'));
   assert.ok(indexSource.includes('if (!mapStaticBuilt)'));
