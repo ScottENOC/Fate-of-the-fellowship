@@ -262,6 +262,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
       </div>
     </div>
     <div id="legacy-boons"></div>
+    <div id="legacy-setup-choices" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid #3a2810"></div>
   </div>
 </div>
 
@@ -461,6 +462,7 @@ function updatePlayerFields() {
     wrap.appendChild(charRow);
     container.appendChild(wrap);
   }
+  if (typeof buildLegacySetupChoices === 'function') buildLegacySetupChoices();
 }
 
 function makeSetupCharSelect(id, defaultVal) {
@@ -499,6 +501,7 @@ function onCharSelectChange(evt) {
     }
   }
   changed.dataset.prev = newVal;
+  buildLegacySetupChoices();
 }
 updatePlayerFields();
 
@@ -613,6 +616,7 @@ function buildDifficultySelect() {
     document.getElementById('legacy-panel').style.display = 'block';
     document.getElementById('lp-total').textContent = `(${lp} pts)`;
     buildLegacyBoons();
+    buildLegacySetupChoices();
   }
 }
 
@@ -632,6 +636,109 @@ const LEGACY_BOON_DEFS = [
   { id:'deploy-troop',  cost:3, label:'Deploy Friendly Troop',     desc:'At game start, deploy 1 friendly troop of choice to any haven, friendly troop, or character location.' },
   { id:'more-hope',     cost:3, label:'+1 Starting/Max Hope',      desc:'Increase starting hope and maximum hope by 1.' },
 ];
+
+
+function getCurrentSetupAssignments() {
+  const n = parseInt(document.getElementById('num-players')?.value || '1');
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const chars = i === 0 ? ['frodo-sam'] : [];
+    const a = document.getElementById(`pchar${i}a`)?.value;
+    const b = document.getElementById(`pchar${i}b`)?.value;
+    if (a) chars.push(a);
+    if (b) chars.push(b);
+    out.push(chars);
+  }
+  return out;
+}
+
+function buildLegacySetupChoices() {
+  const el = document.getElementById('legacy-setup-choices');
+  if (!el) return;
+  const boons = getBoons();
+  const extraN = Math.max(0, boons['extra-char'] || 0);
+  const tokenN = Math.max(0, boons['start-token'] || 0);
+  const troopN = Math.max(0, boons['deploy-troop'] || 0);
+  if (extraN + tokenN + troopN === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+  el.style.display = 'block';
+  el.innerHTML = '<div style="color:#c8a050;font-size:.82em;font-weight:bold;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Starting choices</div>';
+  const assignments = getCurrentSetupAssignments();
+  const assigned = new Set(assignments.flat());
+  const nPlayers = assignments.length;
+
+  for (let i = 0; i < extraN; i++) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1.4fr;gap:6px;margin-bottom:6px;align-items:center';
+    const pSel = document.createElement('select');
+    pSel.id = `legacy-extra-player-${i}`;
+    for (let p = 0; p < nPlayers; p++) {
+      const o = document.createElement('option'); o.value = String(p); o.textContent = document.getElementById(`pname${p}`)?.value.trim() || `Player ${p+1}`; pSel.appendChild(o);
+    }
+    const cSel = document.createElement('select');
+    cSel.id = `legacy-extra-char-${i}`;
+    for (const [cid, c] of Object.entries(CHARS)) {
+      if (assigned.has(cid)) continue;
+      const o = document.createElement('option'); o.value = cid; o.textContent = c.name; cSel.appendChild(o);
+    }
+    row.appendChild(pSel); row.appendChild(cSel); el.appendChild(row);
+  }
+
+  const tokenLabels = { friendship:'♥ Friendship', valor:'⚔ Valor', stealth:'★ Stealth', resistance:'◎ Resistance' };
+  for (let i = 0; i < tokenN; i++) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:.8em';
+    row.innerHTML = '<span style="flex:1;color:#907850">Token for every player</span>';
+    const sel = document.createElement('select'); sel.id = `legacy-start-token-${i}`;
+    for (const [k,label] of Object.entries(tokenLabels)) { const o=document.createElement('option'); o.value=k; o.textContent=label; sel.appendChild(o); }
+    row.appendChild(sel); el.appendChild(row);
+  }
+
+  const troopLabels = { gondor:'Gondor', rohirrim:'Rohirrim', elven:'Elven', dwarven:'Dwarven' };
+  for (let i = 0; i < troopN; i++) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:.8fr 1.4fr;gap:6px;margin-bottom:6px';
+    const tSel = document.createElement('select'); tSel.id = `legacy-deploy-type-${i}`;
+    for (const [k,label] of Object.entries(troopLabels)) { const o=document.createElement('option'); o.value=k; o.textContent=label; tSel.appendChild(o); }
+    const lSel = document.createElement('select'); lSel.id = `legacy-deploy-loc-${i}`;
+    const charLocs = new Set(assignments.flat().map(cid => CHARS[cid]?.start).filter(Boolean));
+    for (const [lid, loc] of Object.entries(LOCS)) {
+      const baseFriendly = !!loc.musterType || ['grey-havens','rivendell','lorien','woodland-realm','ered-luin','erebor','iron-hills','helms-deep','edoras','eastemnet','minas-tirith','dol-amroth','pelargir'].includes(lid);
+      if (!loc.isHaven && !baseFriendly && !charLocs.has(lid)) continue;
+      const o=document.createElement('option'); o.value=lid; o.textContent=loc.name; lSel.appendChild(o);
+    }
+    row.appendChild(tSel); row.appendChild(lSel); el.appendChild(row);
+  }
+  const note = document.createElement('div');
+  note.style.cssText = 'font-size:.7em;color:#706050;margin-top:6px';
+  note.textContent = 'Cloud rooms use these choices too; bonus characters join the host unless changed in local play.';
+  el.appendChild(note);
+}
+
+function getLegacySetupChoices(forCloudRoom = false) {
+  const boons = getBoons();
+  const extraCharacters = [];
+  const seen = new Set(getCurrentSetupAssignments().flat());
+  for (let i = 0; i < Math.max(0, boons['extra-char'] || 0); i++) {
+    const charId = document.getElementById(`legacy-extra-char-${i}`)?.value;
+    const rawPlayer = parseInt(document.getElementById(`legacy-extra-player-${i}`)?.value || '0');
+    if (!charId || seen.has(charId)) continue;
+    seen.add(charId);
+    extraCharacters.push({ playerIdx: forCloudRoom ? 0 : rawPlayer, charId });
+  }
+  const startTokens = [];
+  for (let i = 0; i < Math.max(0, boons['start-token'] || 0); i++) {
+    const sym = document.getElementById(`legacy-start-token-${i}`)?.value;
+    if (sym) startTokens.push(sym);
+  }
+  const deployTroops = [];
+  for (let i = 0; i < Math.max(0, boons['deploy-troop'] || 0); i++) {
+    const type = document.getElementById(`legacy-deploy-type-${i}`)?.value;
+    const locId = document.getElementById(`legacy-deploy-loc-${i}`)?.value;
+    if (type && locId) deployTroops.push({ type, locId });
+  }
+  return { extraCharacters, startTokens, deployTroops };
+}
 
 function buildLegacyBoons() {
   const lp = getLegacyPoints();
@@ -655,6 +762,7 @@ function buildLegacyBoons() {
       localStorage.setItem(LP_KEY, String(cur - def.cost));
       setBoon(def.id, (getBoons()[def.id] || 0) + 1);
       buildDifficultySelect();
+      buildLegacySetupChoices();
     };
     row.appendChild(btn);
     el.appendChild(row);
@@ -836,11 +944,12 @@ async function createRoom() {
   const difficulty = document.getElementById('difficulty')?.value || 'standard';
   const cardPrefs = getCardPrefs();
   const boons = getBoons();
+  const legacySetup = getLegacySetupChoices(true);
   const selectedObjectiveIds = pickLobbyObjectives(difficulty, cardPrefs);
   const lobby = {
     host: myId,
     status: 'waiting',
-    settings: { difficulty, cardPrefs, boons, selectedObjectiveIds },
+    settings: { difficulty, cardPrefs, boons, legacySetup, selectedObjectiveIds },
     players: {
       [myId]: { name: myName, chars: ['frodo-sam', 'random'], ready: false, lastSeen: Date.now(), joinedAt: Date.now() }
     }
@@ -1102,7 +1211,7 @@ async function startFromLobby() {
   const sorted = lobbyPlayerOrder(authLobby.players||{}, authLobby.host);
   if (sorted.length === 0) { showToast('⚠ No players found — cannot start'); return; }
 
-  const { difficulty: rawDiff, cardPrefs, boons, selectedObjectiveIds } = authLobby.settings || {};
+  const { difficulty: rawDiff, cardPrefs, boons, legacySetup, selectedObjectiveIds } = authLobby.settings || {};
   const difficulty = rawDiff || 'standard';
 
   // Determine which chars are required by selected objectives but not explicitly picked
@@ -1135,7 +1244,7 @@ async function startFromLobby() {
   if (!charAssignment.flat().includes('frodo-sam')) charAssignment[0].unshift('frodo-sam');
   charAssignment = charAssignment.map(cs => cs.length ? cs : [Object.keys(CHARS)[0]]);
 
-  newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons, selectedObjectiveIds });
+  newGame({ numPlayers: sorted.length, playerNames: sorted.map(([,p])=>p.name), charAssignment, difficulty, cardPrefs, boons, legacySetup, selectedObjectiveIds });
   G.roomCode = _lobbyRoomCode;
   G.playerIds = sorted.map(([pid])=>pid);
   G.savedAt = Date.now();
@@ -1496,7 +1605,8 @@ function startGame() {
   const diff = document.getElementById('difficulty').value;
   const cardPrefs = getCardPrefs();
   const boons = getBoons();
-  newGame({ numPlayers:n, playerNames:names, difficulty:diff, charAssignment, cardPrefs, boons });
+  const legacySetup = getLegacySetupChoices(false);
+  newGame({ numPlayers:n, playerNames:names, difficulty:diff, charAssignment, cardPrefs, boons, legacySetup });
   G.roomCode = (document.getElementById('room-code')?.value || '').trim().toUpperCase() || null;
   document.getElementById('setup').style.display = 'none';
   document.getElementById('game').style.display = 'flex';
