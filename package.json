@@ -2,8 +2,8 @@
   "name": "fate-of-the-fellowship",
   "private": true,
   "scripts": {
-    "test": "node tests/regression.cjs",
-    "test:strict-boons": "STRICT_BOON_AUDIT=1 node tests/regression.cjs"
+    "test": "node tests/regression.cjs && node tests/index-syntax.cjs",
+    "test:strict-boons": "STRICT_BOON_AUDIT=1 node tests/regression.cjs && node tests/index-syntax.cjs"
   },
   "engines": {
     "node": ">=20"

@@ -107,6 +107,18 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 /* ── MENU TOGGLE BUTTON (floats on map) ── */
 #menu-toggle-btn{position:absolute;bottom:10px;left:10px;z-index:20;background:rgba(20,15,8,.88);border:1px solid #4a3820;color:#c8a050;padding:5px 13px;border-radius:14px;cursor:pointer;font-family:inherit;font-size:.78em;transition:all .15s}
 #menu-toggle-btn:hover{border-color:#c8a050;background:rgba(30,22,10,.97)}
+#mobile-action-sheet{display:none}
+.mobile-quick-btn{background:rgba(26,21,16,.96);border:1px solid #6a5020;color:#d4c4a0;border-radius:16px;padding:7px 10px;font-family:inherit;font-size:.76em;white-space:nowrap}
+.mobile-quick-btn:disabled{opacity:.35}
+.mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
+#mobile-action-sheet{display:none}
+.mobile-quick-btn{background:rgba(26,21,16,.96);border:1px solid #6a5020;color:#d4c4a0;border-radius:16px;padding:7px 10px;font-family:inherit;font-size:.76em;white-space:nowrap}
+.mobile-quick-btn:disabled{opacity:.35}
+.mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
+#mobile-action-sheet{display:none}
+.mobile-quick-btn{background:rgba(26,21,16,.96);border:1px solid #6a5020;color:#d4c4a0;border-radius:16px;padding:7px 10px;font-family:inherit;font-size:.76em;white-space:nowrap}
+.mobile-quick-btn:disabled{opacity:.35}
+.mobile-quick-btn.primary{border-color:#c8a050;color:#f0d080}
 
 /* ── SIDEBAR HIDDEN STATE ── */
 #sidebar.menu-hidden{display:none}
@@ -127,6 +139,9 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
   .setup-card{width:calc(100vw - 32px);max-width:460px}
   #toast{bottom:50vh}
   #menu-toggle-btn{bottom:auto;top:8px;left:10px}
+  #mobile-action-sheet{display:flex;position:absolute;left:8px;right:8px;bottom:8px;z-index:18;background:rgba(14,12,8,.94);border:1px solid #4a3820;border-radius:12px;padding:8px;gap:6px;align-items:center;overflow-x:auto;box-shadow:0 4px 16px rgba(0,0,0,.55);backdrop-filter:blur(6px)}
+  #mobile-action-sheet .mobile-char-summary{min-width:116px;max-width:150px;font-size:.7em;color:#907850;line-height:1.25;flex-shrink:0}
+  #mobile-action-sheet .mobile-char-summary strong{display:block;color:#d4c4a0;font-size:1.08em}
 }
 
 /* ── LOBBY SCREEN ── */
@@ -296,6 +311,7 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
 <div id="game">
   <div id="map-panel">
     <button id="menu-toggle-btn" onclick="toggleSidebar()">☰ Hide Menu</button>
+    <div id="mobile-action-sheet"><div class="mobile-char-summary">Tap a character to show quick actions.</div></div>
     <div id="map-wrap">
       <img id="map-img" src="map.jpg" alt="Middle-earth map">
       <svg id="map-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="xMinYMin meet">
@@ -792,6 +808,7 @@ function promptLoadGame() {
 }
 
 let _cloudSaveTimer = null;
+let _localSaveTimer = null;
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
   const btn = document.getElementById('menu-toggle-btn');
@@ -801,9 +818,12 @@ function toggleSidebar() {
 
 function autoSave() {
   if (!G || G.phase === 'gameover') return;
-  saveGame(); // always write localStorage immediately
+  // Rendering/selecting UI can happen many times per second on touch devices.
+  // Debounce JSON serialisation so harmless selection changes do not repeatedly
+  // stringify the full game state. Manual Save still writes immediately.
+  clearTimeout(_localSaveTimer);
+  _localSaveTimer = setTimeout(saveGame, 250);
   if (G.roomCode) {
-    // debounce: send to Firebase 2s after last change
     clearTimeout(_cloudSaveTimer);
     _cloudSaveTimer = setTimeout(cloudSave, 2000);
   }
@@ -1627,6 +1647,192 @@ let UI = {
   show: { routes: true, locations: true, nazgul: true, characters: true, troops: true },
 };
 
+
+function centerMapOnLocation(locId, minZoom = 2.2) {
+  const loc = LOCS[locId];
+  const panel = document.getElementById('map-panel');
+  const svg = document.getElementById('map-svg');
+  if (!loc || !panel || !svg) return;
+  const zoom = Math.max(minZoom, mapView.zoom);
+  const x = (loc.x / 100) * (svg.offsetWidth || panel.offsetWidth);
+  const y = (loc.y / 100) * (svg.offsetHeight || panel.offsetHeight);
+  mapView.zoom = zoom;
+  mapView.panX = panel.offsetWidth / 2 - x * zoom;
+  mapView.panY = panel.offsetHeight / 2 - y * zoom;
+  clampPan(); applyMapTransform();
+}
+
+function centerOnActiveCharacter() {
+  if (!G) return;
+  const p = G.players[myPlayerIdx()] || G.players[G.currentPlayer];
+  const cid = UI.selectedChar || G.turn?.primaryChar || p?.chars?.find(id => G.charState?.[id]?.alive);
+  const locId = cid && G.charState?.[cid]?.location;
+  if (locId) centerMapOnLocation(locId);
+}
+
+function openFullActionsMobile() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar?.classList.remove('menu-hidden');
+  const btn = document.getElementById('menu-toggle-btn');
+  if (btn) btn.textContent = '☰ Hide Menu';
+  document.getElementById('action-grid')?.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+function renderMobileActionSheet() {
+  const el = document.getElementById('mobile-action-sheet');
+  if (!el || !G) return;
+  const cid = UI.selectedChar;
+  if (!cid || !CHARS[cid] || !G.charState?.[cid]) {
+    el.innerHTML = '<div class="mobile-char-summary">Tap a character to show quick actions.</div><button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>';
+    return;
+  }
+  const cs = G.charState[cid];
+  const loc = G.locState[cs.location];
+  const left = G.turn?.charActions?.[cid] ?? G.players[myPlayerIdx()]?.actionsPerChar ?? 4;
+  const can = canAct(cid);
+  const friendly = loc ? Object.values(loc.friendly || {}).reduce((a,b)=>a+b,0) : 0;
+  const hasRegionCard = (G.players[myPlayerIdx()]?.hand || []).some(c => c.type === 'region');
+  const travelOK = can && validTravelTargets(cid).length > 0;
+  const prepareOK = can && !!loc?.isHaven && hasRegionCard;
+  const musterOK = can && !!LOCS[cs.location]?.musterType && !loc?.isShadowStronghold;
+  const attackOK = can && friendly > 0 && (loc?.shadowTroops || 0) > 0;
+  const captureOK = can && !!LOCS[cs.location]?.capturable && (loc?.shadowTroops || 0) === 0 && friendly > 0;
+  const summary = '<div class="mobile-char-summary"><strong>'+CHARS[cid].name+'</strong>'+ (LOCS[cs.location]?.name || cs.location) +' · '+left+' action'+(left===1?'':'s')+'</div>';
+  const btn = (label, action, ok, primary=false) => '<button class="mobile-quick-btn'+(primary?' primary':'')+'" '+(ok?'':'disabled ')+'onclick="clickAction(\''+action+'\')">'+label+'</button>';
+  el.innerHTML = summary +
+    btn('Travel','travel',travelOK,true) +
+    btn('Prepare','prepare',prepareOK) +
+    btn('Muster','muster',musterOK) +
+    btn('Attack','attack',attackOK) +
+    (captureOK ? btn('Capture','capture',true) : '') +
+    '<button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>' +
+    '<button class="mobile-quick-btn" onclick="openFullActionsMobile()">More…</button>';
+}
+
+
+function centerMapOnLocation(locId, minZoom = 2.2) {
+  const loc = LOCS[locId];
+  const panel = document.getElementById('map-panel');
+  const svg = document.getElementById('map-svg');
+  if (!loc || !panel || !svg) return;
+  const zoom = Math.max(minZoom, mapView.zoom);
+  const x = (loc.x / 100) * (svg.offsetWidth || panel.offsetWidth);
+  const y = (loc.y / 100) * (svg.offsetHeight || panel.offsetHeight);
+  mapView.zoom = zoom;
+  mapView.panX = panel.offsetWidth / 2 - x * zoom;
+  mapView.panY = panel.offsetHeight / 2 - y * zoom;
+  clampPan(); applyMapTransform();
+}
+
+function centerOnActiveCharacter() {
+  if (!G) return;
+  const p = G.players[myPlayerIdx()] || G.players[G.currentPlayer];
+  const cid = UI.selectedChar || G.turn?.primaryChar || p?.chars?.find(id => G.charState?.[id]?.alive);
+  const locId = cid && G.charState?.[cid]?.location;
+  if (locId) centerMapOnLocation(locId);
+}
+
+function openFullActionsMobile() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar?.classList.remove('menu-hidden');
+  const btn = document.getElementById('menu-toggle-btn');
+  if (btn) btn.textContent = '☰ Hide Menu';
+  document.getElementById('action-grid')?.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+function renderMobileActionSheet() {
+  const el = document.getElementById('mobile-action-sheet');
+  if (!el || !G) return;
+  const cid = UI.selectedChar;
+  if (!cid || !CHARS[cid] || !G.charState?.[cid]) {
+    el.innerHTML = '<div class="mobile-char-summary">Tap a character to show quick actions.</div><button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>';
+    return;
+  }
+  const cs = G.charState[cid];
+  const loc = G.locState[cs.location];
+  const left = G.turn?.charActions?.[cid] ?? G.players[myPlayerIdx()]?.actionsPerChar ?? 4;
+  const can = canAct(cid);
+  const friendly = loc ? Object.values(loc.friendly || {}).reduce((a,b)=>a+b,0) : 0;
+  const hasRegionCard = (G.players[myPlayerIdx()]?.hand || []).some(c => c.type === 'region');
+  const travelOK = can && validTravelTargets(cid).length > 0;
+  const prepareOK = can && !!loc?.isHaven && hasRegionCard;
+  const musterOK = can && !!LOCS[cs.location]?.musterType && !loc?.isShadowStronghold;
+  const attackOK = can && friendly > 0 && (loc?.shadowTroops || 0) > 0;
+  const captureOK = can && !!LOCS[cs.location]?.capturable && (loc?.shadowTroops || 0) === 0 && friendly > 0;
+  const summary = '<div class="mobile-char-summary"><strong>'+CHARS[cid].name+'</strong>'+ (LOCS[cs.location]?.name || cs.location) +' · '+left+' action'+(left===1?'':'s')+'</div>';
+  const btn = (label, action, ok, primary=false) => '<button class="mobile-quick-btn'+(primary?' primary':'')+'" '+(ok?'':'disabled ')+'onclick="clickAction(\''+action+'\')">'+label+'</button>';
+  el.innerHTML = summary +
+    btn('Travel','travel',travelOK,true) +
+    btn('Prepare','prepare',prepareOK) +
+    btn('Muster','muster',musterOK) +
+    btn('Attack','attack',attackOK) +
+    (captureOK ? btn('Capture','capture',true) : '') +
+    '<button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>' +
+    '<button class="mobile-quick-btn" onclick="openFullActionsMobile()">More…</button>';
+}
+
+
+function centerMapOnLocation(locId, minZoom = 2.2) {
+  const loc = LOCS[locId];
+  const panel = document.getElementById('map-panel');
+  const svg = document.getElementById('map-svg');
+  if (!loc || !panel || !svg) return;
+  const zoom = Math.max(minZoom, mapView.zoom);
+  const x = (loc.x / 100) * (svg.offsetWidth || panel.offsetWidth);
+  const y = (loc.y / 100) * (svg.offsetHeight || panel.offsetHeight);
+  mapView.zoom = zoom;
+  mapView.panX = panel.offsetWidth / 2 - x * zoom;
+  mapView.panY = panel.offsetHeight / 2 - y * zoom;
+  clampPan(); applyMapTransform();
+}
+
+function centerOnActiveCharacter() {
+  if (!G) return;
+  const p = G.players[myPlayerIdx()] || G.players[G.currentPlayer];
+  const cid = UI.selectedChar || G.turn?.primaryChar || p?.chars?.find(id => G.charState?.[id]?.alive);
+  const locId = cid && G.charState?.[cid]?.location;
+  if (locId) centerMapOnLocation(locId);
+}
+
+function openFullActionsMobile() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar?.classList.remove('menu-hidden');
+  const btn = document.getElementById('menu-toggle-btn');
+  if (btn) btn.textContent = '☰ Hide Menu';
+  document.getElementById('action-grid')?.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+function renderMobileActionSheet() {
+  const el = document.getElementById('mobile-action-sheet');
+  if (!el || !G) return;
+  const cid = UI.selectedChar;
+  if (!cid || !CHARS[cid] || !G.charState?.[cid]) {
+    el.innerHTML = '<div class="mobile-char-summary">Tap a character to show quick actions.</div><button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>';
+    return;
+  }
+  const cs = G.charState[cid];
+  const loc = G.locState[cs.location];
+  const left = G.turn?.charActions?.[cid] ?? G.players[myPlayerIdx()]?.actionsPerChar ?? 4;
+  const can = canAct(cid);
+  const friendly = loc ? Object.values(loc.friendly || {}).reduce((a,b)=>a+b,0) : 0;
+  const hasRegionCard = (G.players[myPlayerIdx()]?.hand || []).some(c => c.type === 'region');
+  const travelOK = can && validTravelTargets(cid).length > 0;
+  const prepareOK = can && !!loc?.isHaven && hasRegionCard;
+  const musterOK = can && !!LOCS[cs.location]?.musterType && !loc?.isShadowStronghold;
+  const attackOK = can && friendly > 0 && (loc?.shadowTroops || 0) > 0;
+  const captureOK = can && !!LOCS[cs.location]?.capturable && (loc?.shadowTroops || 0) === 0 && friendly > 0;
+  const summary = '<div class="mobile-char-summary"><strong>'+CHARS[cid].name+'</strong>'+ (LOCS[cs.location]?.name || cs.location) +' · '+left+' action'+(left===1?'':'s')+'</div>';
+  const btn = (label, action, ok, primary=false) => '<button class="mobile-quick-btn'+(primary?' primary':'')+'" '+(ok?'':'disabled ')+'onclick="clickAction(\''+action+'\')">'+label+'</button>';
+  el.innerHTML = summary +
+    btn('Travel','travel',travelOK,true) +
+    btn('Prepare','prepare',prepareOK) +
+    btn('Muster','muster',musterOK) +
+    btn('Attack','attack',attackOK) +
+    (captureOK ? btn('Capture','capture',true) : '') +
+    '<button class="mobile-quick-btn" onclick="centerOnActiveCharacter()">◎ Centre</button>' +
+    '<button class="mobile-quick-btn" onclick="openFullActionsMobile()">More…</button>';
+}
+
 function resetUI() {
   UI.selectedChar = null; UI.pendingAction = null;
   UI.selectedCard = null; UI.validTargets = [];
@@ -1674,6 +1880,7 @@ function render() {
   try { renderObjectives(); } catch(e) { console.error('renderObjectives:', e); }
   try { renderLieutenants(); } catch(e) { console.error('renderLieutenants:', e); }
   try { renderActions(); } catch(e) { console.error('renderActions:', e); }
+  try { renderMobileActionSheet(); } catch(e) { console.error('renderMobileActionSheet:', e); }
   try { renderLog(); } catch(e) { console.error('renderLog:', e); }
   try { renderMap(); } catch(e) { console.error('renderMap:', e); }
   if (G.phase === 'gameover') showGameover();
@@ -2123,9 +2330,13 @@ function renderLieutenants() {
 }
 
 // ── MAP RENDERING ─────────────────────────────────────────────────────────────
+let mapStaticBuilt = false;
 function renderMap() {
-  renderConnections();
-  renderBattleLines();
+  if (!mapStaticBuilt) {
+    renderConnections();
+    renderBattleLines();
+    mapStaticBuilt = true;
+  }
   renderLocations();
   renderCharMarkers();
   // Apply layer visibility
