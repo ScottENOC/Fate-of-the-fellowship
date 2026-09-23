@@ -856,7 +856,9 @@ function getSetupName() {
   return (document.getElementById('pname0')?.value || '').trim() || localStorage.getItem('mp-player-name') || 'Wanderer';
 }
 function myPlayerIdx() {
-  if (!G?.playerIds) return 0;
+  // Local hot-seat games have no playerIds: the viewing player is the active
+  // player. Cloud games retain per-device identity through playerIds.
+  if (!G?.playerIds) return G?.currentPlayer ?? 0;
   const idx = G.playerIds.indexOf(getPlayerId());
   return idx >= 0 ? idx : 0;
 }
@@ -923,7 +925,12 @@ async function syncFromCloud() {
 // ── ROOM CODE HELPERS ───────────────────────────────────────────────────────
 function genRoomCodeStr() {
   const words = ['SHIRE','RIVENDELL','LORIEN','ROHAN','GONDOR','MIRKWOOD','EREBOR','EDORAS'];
-  return words[Math.floor(Math.random() * words.length)] + '-' + Math.floor(1000 + Math.random() * 9000);
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(6);
+  if (globalThis.crypto?.getRandomValues) crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  const suffix = Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
+  return words[bytes[0] % words.length] + '-' + suffix.slice(0,3) + '-' + suffix.slice(3);
 }
 function genRoomCode() {
   document.getElementById('room-code').value = genRoomCodeStr();
@@ -1032,6 +1039,12 @@ function enterLobby(code, lobby) {
   startHeartbeat(code);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  })[ch]);
+}
+
 function lobbyPlayerOrder(players, hostId) {
   return Object.entries(players).sort((a,b) => {
     if (a[0] === hostId) return -1;
@@ -1083,7 +1096,7 @@ function renderLobby(lobby) {
       };
       return `<div class="lobby-player-row is-me">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <input class="lobby-name-input" value="${p.name.replace(/"/g,'&quot;')}" placeholder="Your name"
+          <input class="lobby-name-input" value="${escapeHtml(p.name)}" placeholder="Your name"
             onblur="pushLobbyName(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
           ${isHost?'<span title="Host">👑</span>':''}
           ${p.ready?'<span style="color:#50a850;font-size:.75em">✓ Ready</span>':''}
@@ -1101,7 +1114,7 @@ function renderLobby(lobby) {
       }).join('<span style="color:#3a2810;margin:0 4px">·</span>');
       return `<div class="lobby-player-row">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="color:${isHost?'#f0c040':'#c8b880'};font-size:.85em;font-weight:${isHost?'bold':'normal'}">${p.name}${isHost?' 👑':''}</span>
+          <span style="color:${isHost?'#f0c040':'#c8b880'};font-size:.85em;font-weight:${isHost?'bold':'normal'}">${escapeHtml(p.name)}${isHost?' 👑':''}</span>
           ${p.ready?'<span style="color:#50a850;font-size:.75em">✓ Ready</span>':''}
           ${offline?'<span style="color:#906050;font-size:.72em">(offline)</span>':''}
         </div>
