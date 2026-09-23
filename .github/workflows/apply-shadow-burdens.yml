@@ -21,8 +21,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Apply deterministic patch
-        run: node scripts/apply-shadow-burdens.cjs
+      - name: Repair helper and apply deterministic patch
+        run: |
+          node scripts/fix-shadow-burdens-helper.cjs
+          node scripts/apply-shadow-burdens.cjs
       - name: Run regressions
         run: npm test
       - name: Commit patched source
