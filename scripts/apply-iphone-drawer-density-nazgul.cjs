@@ -4,12 +4,6 @@ const p = 'index.html';
 let s = fs.readFileSync(p, 'utf8');
 function rep(oldText,newText,label){ if(!s.includes(oldText)) throw new Error('missing anchor: '+label); s=s.replace(oldText,newText); }
 
-rep(
-  '#char-list{}',
-  '#char-list{}',
-  'noop'
-);
-
 // Portrait density: compact character grid, tighter action hint, three-column actions.
 rep(
   '  #middle{padding-bottom:12px}\n',
@@ -60,8 +54,6 @@ rep(
   "    const g = svgEl('g',{cursor:'pointer'});\n    g.style.pointerEvents = 'all';\n    g.onclick = e => { e.stopPropagation(); showNazgulDistribution(); };\n    g.appendChild(svgEl('circle',{cx:rc.x,cy:rc.y,r:2.8,fill:'transparent',stroke:'none',class:'touch-hit'}));\n    g.appendChild(svgEl('circle',{cx:rc.x, cy:rc.y, r:1.6,\n",
   'nazgul badge click'
 );
-
-// Eye-region count badge needs touch area too; Eye click handles the whole group already.
 
 fs.writeFileSync(p,s);
 
