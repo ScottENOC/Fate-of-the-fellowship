@@ -1,0 +1,11 @@
+{
+  "name": "fate-of-the-fellowship",
+  "private": true,
+  "scripts": {
+    "test": "node tests/regression.cjs",
+    "test:strict-boons": "STRICT_BOON_AUDIT=1 node tests/regression.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
