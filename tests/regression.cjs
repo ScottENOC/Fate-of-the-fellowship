@@ -251,6 +251,14 @@ test('character-specific objectives reference real characters', () => {
   assert.deepEqual(Array.from(missing), []);
 });
 
+test('UI render keeps static map layers cached and autosave debounced', () => {
+  assert.ok(indexSource.includes('let mapStaticBuilt = false;'));
+  assert.ok(indexSource.includes('if (!mapStaticBuilt)'));
+  assert.ok(indexSource.includes('_localSaveTimer = setTimeout(saveGame, 250)'));
+  assert.ok(indexSource.includes('renderMobileActionSheet()'));
+  assert.ok(indexSource.includes('centerOnActiveCharacter()'));
+});
+
 test('Legacy boon definitions have implementation references', () => {
   const ids = extractLegacyBoonIds();
   assert.ok(ids.length >= 10, 'expected a substantial Legacy boon catalogue');
