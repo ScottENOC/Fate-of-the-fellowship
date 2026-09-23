@@ -257,7 +257,6 @@ body{font-family:'Palatino Linotype',Palatino,Georgia,serif;background:#0e0c08;c
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <h3 style="color:#c8a050;margin:0;font-size:1em;text-transform:uppercase;letter-spacing:1px">Legacy Points <span id="lp-total" style="color:#f0c040"></span></h3>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-sm" style="color:#507050;border-color:#507050;font-size:.72em" onclick="grantTestLP(10)">+10 LP (test)</button>
         <button class="btn btn-sm" style="color:#904030;border-color:#904030;font-size:.72em" onclick="resetLegacy()">⚠ Reset All</button>
       </div>
     </div>
@@ -597,7 +596,7 @@ function buildDifficultySelect() {
   ];
   // Add legendary+ levels up to the next unlock or max 24
   const MAX_PLUS = 24;
-  const DEV_MODE = true; // set false in production to gate behind wins
+  const DEV_MODE = false; // progression is gated by completed Legendary tiers
   const wonLegendary = DEV_MODE || (rec['legendary'] || 0) > 0;
   if (wonLegendary) {
     for (let i = 1; i <= MAX_PLUS; i++) {
@@ -773,6 +772,7 @@ function buildLegacyBoons() {
 function saveGame() {
   if (!G) return;
   try {
+    G = migrateGameState(G);
     localStorage.setItem(SAVE_KEY, JSON.stringify(G));
   } catch(e) { console.warn('Save failed:', e); }
 }
@@ -781,7 +781,7 @@ function promptLoadGame() {
   const raw = localStorage.getItem(SAVE_KEY);
   if (!raw) { alert('No saved game found.'); return; }
   try {
-    G = JSON.parse(raw);
+    G = migrateGameState(JSON.parse(raw));
     document.getElementById('setup').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     requestAnimationFrame(() => {
@@ -864,7 +864,7 @@ async function cloudLoad(code) {
   try {
     const res = await fetch(`${FIREBASE_DB}/rooms/${encodeURIComponent(code)}/state.json`, { cache: 'no-store' });
     if (!res.ok) throw new Error(res.status);
-    return await res.json(); // G directly
+    return migrateGameState(await res.json());
   } catch(e) {
     console.warn('Cloud load failed:', e);
     return null;
@@ -876,8 +876,9 @@ function startCloudStream(roomCode) {
   _cloudStream = new EventSource(`${FIREBASE_DB}/rooms/${encodeURIComponent(roomCode)}/state.json?stream=true`);
   _cloudStream.addEventListener('put', e => {
     try {
-      const incoming = JSON.parse(e.data)?.data;
-      if (!incoming?.savedAt || incoming.savedAt <= (G?.savedAt || 0)) return;
+      const incomingRaw = JSON.parse(e.data)?.data;
+      if (!incomingRaw?.savedAt || incomingRaw.savedAt <= (G?.savedAt || 0)) return;
+      const incoming = migrateGameState(incomingRaw);
       const myId = getPlayerId();
       G = incoming;
       saveGame();
@@ -975,7 +976,7 @@ async function joinLobbyFromSetup() {
     if (!roomData) { alert(`Room "${code}" not found.`); return; }
     // Game already started — drop straight in
     if (roomData.lobby?.status === 'playing' && roomData.state) {
-      G = roomData.state;
+      G = migrateGameState(roomData.state);
       document.getElementById('setup').style.display = 'none';
       document.getElementById('game').style.display = 'flex';
       requestAnimationFrame(() => { alignSvgToImage(); initMapPanZoom(); buildMapToggles(); render(); startCloudStream(code); });

@@ -210,6 +210,35 @@ test('Legacy reshuffle is consumed before empty-deck hope loss', () => {
   assert.equal(evalIn(ctx, 'G.players[0].hand.length'), 2);
 });
 
+test('old save states migrate additively to the current schema', () => {
+  const ctx = makeContext();
+  startGame(ctx, { numPlayers:1, playerNames:['Old'], charAssignment:[['frodo-sam','aragorn']], difficulty:'standard', cardPrefs:{}, boons:{} });
+  vm.runInContext(`
+    __old = JSON.parse(JSON.stringify(G));
+    delete __old.saveVersion;
+    delete __old.legacySetup;
+    delete __old.legacyReshufflesLeft;
+    delete __old.freeLtBoons;
+    delete __old.freeLtState;
+    delete __old.turn.actionsUsed;
+    delete __old.ui.freeSearchThisTurn;
+    __migrated = migrateGameState(__old);
+  `, ctx);
+  assert.equal(evalIn(ctx, '__migrated.saveVersion'), evalIn(ctx, 'GAME_STATE_VERSION'));
+  assert.ok(evalIn(ctx, '__migrated.legacySetup'));
+  assert.equal(evalIn(ctx, '__migrated.legacyReshufflesLeft'), 0);
+  assert.ok(evalIn(ctx, '__migrated.freeLtBoons'));
+  assert.ok(evalIn(ctx, '__migrated.turn.actionsUsed'));
+  assert.equal(evalIn(ctx, '__migrated.ui.freeSearchThisTurn'), false);
+  assert.equal(evalIn(ctx, '__migrated.charState["frodo-sam"].location'), evalIn(ctx, 'G.charState["frodo-sam"].location'));
+});
+
+test('migration rejects saves from a newer schema version', () => {
+  const ctx = makeContext();
+  ctx.__future = { saveVersion: 999 };
+  assert.throws(() => vm.runInContext('migrateGameState(__future)', ctx), /newer game version/);
+});
+
 test('map connections only reference known locations', () => {
   const ctx = makeContext();
   const missing = evalIn(ctx, `CONNECTIONS.flatMap(c => [c.a, c.b]).filter(id => !LOCS[id])`);
