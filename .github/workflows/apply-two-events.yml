@@ -1,0 +1,23 @@
+name: Apply two discovered events
+on:
+  push:
+    branches: [feature/two-more-events]
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/apply-two-events.cjs
+      - run: npm test
+      - name: Commit source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add data.js engine.js index.html tests/regression.cjs
+          git commit -m "Add Red Arrow and Palantir events [events]"
+          git push
