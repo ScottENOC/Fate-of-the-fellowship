@@ -1,4 +1,4 @@
-name: Apply shadow deck reconstruction
+name: Apply shadow deck clarifications
 on:
   push:
     branches: [feature/shadow-deck-reconstruction]
@@ -12,9 +12,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: node scripts/apply-shadow-deck-reconstruction-v2.cjs
-      - run: node scripts/refine-shadow-deck-reconstruction.cjs
-      - run: node scripts/fix-shadow-deck-test.cjs
       - run: node scripts/apply-shadow-special-clarifications.cjs
       - run: npm test
       - name: Verify reconstructed deck invariants
