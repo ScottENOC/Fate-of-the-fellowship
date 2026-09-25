@@ -45,7 +45,8 @@ function migrateGameState(state) {
   s.freeLtState = s.freeLtState || {};
   s.legacySetup = Object.assign({ extraCharacters:[], startTokens:[], deployTroops:[] }, s.legacySetup || {});
   s.legacyReshufflesLeft = Math.max(0, Number(s.legacyReshufflesLeft) || 0);
-  s.ui = Object.assign({ selectedChar:null, pendingAction:null, validTargets:[], ignoreNextOrder:false, freeSearchThisTurn:false }, s.ui || {});
+  s.ui = Object.assign({ selectedChar:null, pendingAction:null, validTargets:[], ignoreNextOrder:false, freeSearchThisTurn:false, pendingWheels:false }, s.ui || {});
+  if (!Number.isFinite(s.shadowDrawsRemaining)) s.shadowDrawsRemaining = 0;
   s.turn = s.turn || makeTurn(s.players[s.currentPlayer || 0]?.chars || [], s.players[s.currentPlayer || 0]?.actionsPerChar || 4);
   s.turn.charActions = s.turn.charActions || {};
   s.turn.actionsUsed = s.turn.actionsUsed || {};
@@ -84,7 +85,7 @@ function newGame(cfg) {
       shadowTroops: LOCS[id].startShadow,
       friendly: { dwarven:0, elven:0, rohirrim:0, gondor:0 },
       isHaven: LOCS[id].isHaven,
-      isShadowStronghold: false,
+      isShadowStronghold: !!LOCS[id].capturable || ['udun','barad-dur','minas-morgul'].includes(id),
     };
   }
 
@@ -264,7 +265,8 @@ function newGame(cfg) {
     winner: null,         // null | 'players' | 'shadow'
     // Per-turn tracking: each character gets 4 independent actions
     turn: makeTurn(players[0].chars, players[0].actionsPerChar),
-    ui: { selectedChar: null, pendingAction: null, validTargets: [], ignoreNextOrder: false, freeSearchThisTurn: false },
+    ui: { selectedChar: null, pendingAction: null, validTargets: [], ignoreNextOrder: false, freeSearchThisTurn: false, pendingWheels:false },
+    shadowDrawsRemaining: 0,
     log: [],
     capturedStrongholds: [],
     objectives: computedObjectives,
@@ -1866,28 +1868,35 @@ function resolveSkiesDarken(card) {
 
 // ── DRAW SHADOW CARDS ─────────────────────────────────────────────────────────
 function drawShadowCards() {
-  if (G.phase !== 'draw-shadow') return;
-  // Mouth of Sauron: Dark Emissary — demand tribute once per shadow phase
-  if (G.shadowLieutenants.includes('mouth-of-sauron')) {
-    G.ui.pendingMouthTribute = true;
+  if (G.phase !== 'draw-shadow' || G.ui.pendingWheels) return;
+  if (!G.shadowDrawsRemaining) {
+    G.shadowDrawsRemaining = G.threatRate;
+    if (G.shadowLieutenants.includes('mouth-of-sauron')) G.ui.pendingMouthTribute = true;
   }
-  const drawn = [];
-  for (let i = 0; i < G.threatRate; i++) {
+  return continueShadowDraws();
+}
+
+function continueShadowDraws() {
+  const drawn=[];
+  while (G.shadowDrawsRemaining > 0 && !G.ui.pendingWheels && G.phase === 'draw-shadow') {
     if (G.shadowDeck.length === 0) {
       addLog('Shadow deck empty — reshuffling discard.');
       G.shadowDeck = shuffle(G.shadowDiscard);
       G.shadowDiscard = [];
     }
-    if (G.shadowDeck.length === 0) { loseHope(1, 'No shadow cards'); continue; }
-    const card = G.shadowDeck.pop();
+    if (G.shadowDeck.length === 0) { loseHope(1,'No shadow cards'); G.shadowDrawsRemaining--; continue; }
+    const card=G.shadowDeck.pop();
     G.shadowDiscard.push(card);
+    G.shadowDrawsRemaining--;
     drawn.push(card);
-    addLog(`Shadow card: ${card.name}`);
+    addLog('Shadow card: '+card.name);
     resolveShadowCard(card);
   }
-  // Advance to next player
-  endTurn();
-  return { drawn };
+  if (G.shadowDrawsRemaining <= 0 && !G.ui.pendingWheels && G.phase === 'draw-shadow') {
+    G.shadowDrawsRemaining=0;
+    endTurn();
+  }
+  return {drawn,pendingWheels:!!G.ui.pendingWheels};
 }
 
 function resolveShadowCard(card) {
@@ -2142,26 +2151,62 @@ function stepToward(from, to) {
 
 function resolveSpecialShadow(card) {
   if (card.effect === 'drums') {
-    addLog('DRUMS OF WAR! +1 at Udûn, Barad-dûr, and Minas Morgul.');
-    for (const locId of ['udun','barad-dur','minas-morgul']) {
-      if (G.shadowSupply > 0) { G.locState[locId].shadowTroops++; G.shadowSupply--; if (totalFriendlyAt(locId)>0) rollBattle(locId,G.locState[locId].shadowTroops,null); else checkHavenLost(locId); }
-      else loseHope(1,'Shadow supply empty');
+    addLog('DRUMS OF WAR! Reinforce every current Shadow stronghold in Mordor.');
+    const targets=Object.entries(G.locState).filter(([locId,ls]) =>
+      LOCS[locId]?.region === 'mordor' && ls.isShadowStronghold
+    );
+    for (const [locId,ls] of targets) {
+      if (G.shadowSupply > 0) {
+        ls.shadowTroops++; G.shadowSupply--;
+        addLog('  +1 shadow troop at '+LOCS[locId].name+'.');
+        if (totalFriendlyAt(locId)>0) rollBattle(locId,ls.shadowTroops,null); else checkHavenLost(locId);
+      } else loseHope(1,'Shadow supply empty');
     }
     return;
   }
   if (card.effect === 'wheels') {
-    addLog('WHEELS OF SARUMAN! Break Oath.');
-    for (const locId of ['iron-hills','ered-luin']) {
-      const friendly=G.locState[locId]?.friendly;
-      if (!friendly || (friendly.dwarven||0) <= 0) {
-        addLog('  Break Oath: no Dwarven troop at '+LOCS[locId].name+' to remove.');
-        continue;
-      }
-      friendly.dwarven--;
-      G.troopSupply.dwarven=(G.troopSupply.dwarven||0)+1;
-      addLog('  Break Oath: removed 1 Dwarven troop from '+LOCS[locId].name+'.');
-    }
+    addLog('WHEELS OF SARUMAN! Current player must choose a consequence.');
+    G.ui.pendingWheels=true;
   }
+}
+
+function wheelsFriendlyTroopCount(){
+  return Object.values(G.locState).reduce((sum,ls)=>sum+Object.values(ls.friendly||{}).reduce((a,b)=>a+b,0),0);
+}
+function wheelsDiscardableCount(){
+  const p=G.players[G.currentPlayer];
+  return (p.hand?.length||0)+Object.values(p.tokens||{}).reduce((a,b)=>a+b,0);
+}
+function resolveWheelsOfSaruman(choice,payload={}){
+  if(!G.ui.pendingWheels)return err('The Wheels of Saruman is not awaiting resolution.');
+  const p=G.players[G.currentPlayer];
+  if(choice==='hope'){
+    loseHope(1,'The Wheels of Saruman');
+  } else if(choice==='troops'){
+    if(wheelsFriendlyTroopCount()<2)return err('There are not 2 friendly troops on the board.');
+    const picks=Array.isArray(payload.picks)?payload.picks:[];
+    if(picks.length!==2)return err('Choose exactly 2 friendly troops.');
+    const need={};
+    for(const pick of picks){const locId=pick?.locId,type=pick?.type,key=locId+'|'+type;if(!G.locState[locId]?.friendly||!Object.hasOwn(G.locState[locId].friendly,type))return err('Invalid friendly troop choice.');need[key]=(need[key]||0)+1;}
+    for(const [key,n] of Object.entries(need)){const [locId,type]=key.split('|');if((G.locState[locId].friendly[type]||0)<n)return err('Not enough selected troops at that location.');}
+    for(const pick of picks){G.locState[pick.locId].friendly[pick.type]--;G.troopSupply[pick.type]=(G.troopSupply[pick.type]||0)+1;}
+    addLog('Wheels of Saruman: 2 friendly troops removed from the board.');
+  } else if(choice==='resources'){
+    if(wheelsDiscardableCount()<2)return err('The current player does not have 2 cards/tokens to discard.');
+    const cardIds=Array.isArray(payload.cardIds)?payload.cardIds:[];
+    const tokenCounts=payload.tokenCounts||{};
+    const total=cardIds.length+Object.values(tokenCounts).reduce((a,b)=>a+(Number(b)||0),0);
+    if(total!==2)return err('Discard exactly 2 cards/tokens in total.');
+    if(new Set(cardIds).size!==cardIds.length)return err('A card can only be discarded once.');
+    for(const id of cardIds)if(!p.hand.some(c=>c.id===id))return err('Selected card is not in hand.');
+    for(const [sym,n0] of Object.entries(tokenCounts)){const n=Number(n0)||0;if(n<0||(p.tokens[sym]||0)<n)return err('Not enough selected tokens.');}
+    for(const id of cardIds){const idx=p.hand.findIndex(c=>c.id===id);G.playerDiscard.push(p.hand.splice(idx,1)[0]);}
+    for(const [sym,n0] of Object.entries(tokenCounts))p.tokens[sym]-=(Number(n0)||0);
+    addLog('Wheels of Saruman: current player discarded 2 cards/tokens.');
+  } else return err('Choose a valid Wheels of Saruman consequence.');
+  G.ui.pendingWheels=false;
+  if(G.phase!=='gameover')continueShadowDraws();
+  return {ok:true};
 }
 
 // ── EVENT CARD EFFECTS ────────────────────────────────────────────────────────
@@ -2286,7 +2331,7 @@ function endTurn() {
   G.currentPlayer = (G.currentPlayer + 1) % G.players.length;
   G.phase = 'actions';
   G.turn = makeTurn(G.players[G.currentPlayer].chars, G.players[G.currentPlayer].actionsPerChar);
-  G.ui = { selectedChar: null, pendingAction: null, validTargets: [], ignoreNextOrder: G.ui.ignoreNextOrder, freeSearchThisTurn: false };
+  G.ui = { selectedChar: null, pendingAction: null, validTargets: [], ignoreNextOrder: G.ui.ignoreNextOrder, freeSearchThisTurn: false, pendingWheels:false };
   if (G.currentPlayer === 0) processFreeLts();
   addLog(`--- ${G.players[G.currentPlayer].name}'s turn ---`);
 }
