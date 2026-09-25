@@ -13,6 +13,7 @@ jobs:
         with:
           node-version: 20
       - run: node scripts/apply-skies-fix.cjs
+      - run: node scripts/fix-stale-fangorn-test.cjs
       - run: npm test
       - name: Commit source
         run: |
