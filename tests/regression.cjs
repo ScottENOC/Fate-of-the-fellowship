@@ -143,12 +143,6 @@ test('Dunland reconstructed routes use purple, yellow and orange', () => {
   assert.deepEqual(Array.from(rows),['orange','purple','yellow']);
 });
 
-test('Fangorn and Edoras have a white player-only connection', () => {
-  const ctx=makeContext();
-  assert.equal(evalIn(ctx,"CONNECTIONS.some(c=>((c.a==='fangorn'&&c.b==='edoras')||(c.a==='edoras'&&c.b==='fangorn'))&&c.type==='normal')"),true);
-  assert.equal(evalIn(ctx,"BATTLE_LINES.some(bl=>bl.locs.some((x,i)=>x==='fangorn'&&bl.locs[i+1]==='edoras'))"),false);
-});
-
 test('clarified Shadow extras include Udun yellow and omit Udun green', () => {
   const ctx=makeContext();
   assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.some(c=>c.location==='udun'&&c.lineColor==='yellow')"),true);
@@ -193,6 +187,30 @@ test('Shadow third effects preserve known cards and balance unknowns 16/16/16', 
   assert.deepEqual(Array.from(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['umbar-orange']")),['deploy-recall','eye-to-frodo']);
   assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['isengard-orange'][0]"),'eye-to-frodo');
   assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['umbar-purple'][0]"),'move-2-nazgul');
+});
+
+test('Skies Darken deck has 12 four-step cards with provisional duplicate Minas Morgul', () => {
+  const ctx=makeContext();
+  assert.equal(evalIn(ctx,'SKIES_DARKEN.length'),12);
+  assert.deepEqual(Array.from(evalIn(ctx,"SKIES_DARKEN.map(c=>c.location)")),['moria','dol-guldur','isengard','umbar','minas-morgul','barad-dur','udun','dunland','near-harad','rhun','nurn','minas-morgul']);
+  assert.equal(evalIn(ctx,"SKIES_DARKEN.filter(c=>c.location==='minas-morgul').length"),2);
+  assert.equal(evalIn(ctx,"SKIES_DARKEN.filter(c=>c.locationVerified===false).length"),1);
+});
+
+test('Skies Darken resolves all four steps in order', () => {
+  const ctx=makeContext();startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.threatRate=2;G.eyeRegion='mordor';G.locState.dunland.shadowTroops=0;G.shadowSupply=20;G.shadowDiscard=[{id:'discard-test',type:'shadow',back:'black'}];G.shadowDeck=[];resolveSkiesDarken({...SKIES_DARKEN.find(c=>c.location==='dunland')});",ctx);
+  assert.equal(evalIn(ctx,'G.threatRate'),3);
+  assert.equal(evalIn(ctx,"G.eyeRegion"),'eriador');
+  assert.equal(evalIn(ctx,"G.locState.dunland.shadowTroops"),3);
+  assert.equal(evalIn(ctx,"G.shadowDiscard.length"),0);
+  assert.equal(evalIn(ctx,"G.shadowDeck.length"),1);
+});
+
+test('Fangorn white path connects to Helms Deep, not Edoras', () => {
+  const ctx=makeContext();
+  assert.equal(evalIn(ctx,"CONNECTIONS.some(c=>(c.a==='fangorn'&&c.b==='helms-deep')||(c.b==='fangorn'&&c.a==='helms-deep'))"),true);
+  assert.equal(evalIn(ctx,"CONNECTIONS.some(c=>(c.a==='fangorn'&&c.b==='edoras')||(c.b==='fangorn'&&c.a==='edoras'))"),false);
 });
 
 test('two newly identified Event cards are catalogued', () => {

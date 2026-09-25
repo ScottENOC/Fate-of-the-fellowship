@@ -191,7 +191,7 @@ const CONNECTIONS = [
   { a:'dol-amroth',    b:'lamedon',           type:'normal' },
   { a:'erech',         b:'edoras',            type:'special', cost:['stealth'] },
   { a:'edoras',        b:'eastemnet',         type:'normal' },
-  { a:'fangorn',       b:'edoras',             type:'normal' }, // white player-only connection; not a Shadow battle line
+  { a:'fangorn',       b:'helms-deep',         type:'normal' }, // white player-only connection; not a Shadow battle line
   { a:'eastemnet',     b:'emyn-muil',         type:'normal' },
   { a:'emyn-muil',     b:'north-ithilien',    type:'special', cost:['resistance'] },
   { a:'emyn-muil',     b:'lorien',            type:'special', cost:['friendship'] },
@@ -354,48 +354,20 @@ const EVENT_CARDS = [
 ];
 
 // ── SKIES DARKEN CARDS ───────────────────────────────────────────────────────
-const SKIES_DARKEN = [
-  { id:'sd0', type:'skies-darken', name:'Shadow Grows',
-    text:'Increase the threat rate marker 1 space on the threat rate track.',
-    effect:'shadow-grows' },
-  { id:'sd1', type:'skies-darken', name:'I See You!',
-    text:'If the Eye of Sauron is in Frodo\'s region, lose 2 hope. Otherwise, shift the Eye to Frodo\'s region.',
-    effect:'i-see-you' },
-  { id:'sd2', type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'minas-morgul' },
-  { id:'sd3', type:'skies-darken', name:'The Danger Intensifies',
-    text:'Shuffle the shadow discard pile and place it face-down on top of the shadow deck.',
-    effect:'danger-intensifies' },
-  { id:'sd4', type:'skies-darken', name:'Shadow Grows',
-    text:'Increase the threat rate marker 1 space on the threat rate track.',
-    effect:'shadow-grows' },
-  { id:'sd5', type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'rhun' },
-  // TODO: verify all 7 of these stronghold cards against the physical rulebook
-  { id:'sd6',  type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'isengard' },
-  { id:'sd7',  type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'udun' },
-  { id:'sd8',  type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'minas-morgul' },
-  { id:'sd9',  type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'barad-dur' },
-  { id:'sd10', type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'dol-guldur' },
-  { id:'sd11', type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'moria' },
-  { id:'sd12', type:'skies-darken', name:'Under Cover of Darkness',
-    text:'Add 3 shadow troops to the location indicated on this card.',
-    effect:'under-cover', location:'umbar' },
+// Every Skies Darken card resolves the same four steps in order. Only the
+// Under Cover of Darkness location varies by card. Eleven locations are
+// verified from the current reconstruction; the second Minas Morgul card is
+// provisional until the final printed location is identified.
+const SKIES_DARKEN_LOCATIONS = [
+  'moria', 'dol-guldur', 'isengard', 'umbar', 'minas-morgul', 'barad-dur', 'udun',
+  'dunland', 'near-harad', 'rhun', 'nurn',
+  'minas-morgul', // provisional 12th location; duplicate unverified
 ];
+const SKIES_DARKEN = SKIES_DARKEN_LOCATIONS.map((location,i)=>({
+  id:'sd'+i, type:'skies-darken', name:'Skies Darken', location,
+  locationVerified:i!==11,
+  text:'1. The Shadow Grows. 2. I See You! 3. Under Cover of Darkness: '+LOCS[location].name+'. 4. The Danger Intensifies.',
+}));
 
 // ── OBJECTIVES ───────────────────────────────────────────────────────────────
 const OBJECTIVES = [
