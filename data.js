@@ -344,7 +344,13 @@ const EVENT_CARDS = [
   { id:'ev5',  type:'event', name:'The Last March of the Ents', display:'The Last March of the Ents',
     text:'Spawn up to 3 Elven troops in Fangorn Forest from the supply (as many as are available). Those troops, and any player characters at Fangorn Forest, may then be moved to Isengard. You may then fight a battle at Isengard.',
     effect:'ents-march' },
-  // TODO: 8 more event cards unknown — game has 14 total
+  { id:'ev6', type:'event', name:'The Red Arrow', display:'The Red Arrow',
+    text:'Move up to 3 friendly troops from the same haven to a different haven. You may then roll a battle there; if you do, shift the Eye to that region.',
+    effect:'red-arrow' },
+  { id:'ev7', type:'event', name:'Gaze into a Palantír', display:'Gaze into a Palantír',
+    text:'Select a character. Shift the Eye to that character’s region, then move 3 Nazgûl of your choice to that region.',
+    effect:'palantir' },
+  // TODO: 6 more event cards unknown — game has 14 total
 ];
 
 // ── SKIES DARKEN CARDS ───────────────────────────────────────────────────────

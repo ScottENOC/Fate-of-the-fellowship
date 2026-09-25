@@ -3901,6 +3901,17 @@ function handleEventCard(card) {
         label:`${REGIONS[r]?.name||r} (${v} Nazgûl)`, action:()=>{ playEvent(card.id,{region:r}); closeModal(); resetUI(); render(); }
       })));
       break;
+    case 'red-arrow': {
+      showRedArrowSourcePicker(card);
+      break;
+    }
+    case 'palantir': {
+      const activePChars=G.players.flatMap(p=>p.chars).filter(cid=>G.charState[cid]?.alive);
+      showModal(card.name,card.text+'<br><br>Select character:',activePChars.map(cid=>({
+        label:CHARS[cid].name,action:()=>{closeModal();showPalantirNazgulPicker(card,cid,[]);}
+      })));
+      break;
+    }
     case 'lembas': {
       const p = G.players[G.currentPlayer];
       const pending = p.chars.filter(cid => !G.turn.doneChars.includes(cid));
@@ -3924,6 +3935,40 @@ function handleEventCard(card) {
       resetUI(); render();
   }
   UI.selectedCard = null;
+}
+
+function redArrowSourceOptions(){
+  return Object.keys(LOCS).filter(lid=>G.locState[lid]?.isHaven&&totalFriendlyAt(lid)>0);
+}
+function showRedArrowSourcePicker(card){
+  const sources=redArrowSourceOptions();
+  showModal(card.name,card.text+'<br><br>Select source haven:',sources.map(lid=>({label:LOCS[lid].name+' ('+totalFriendlyAt(lid)+' friendly)',action:()=>{closeModal();showRedArrowDestinationPicker(card,lid);}})));
+}
+function showRedArrowDestinationPicker(card,from){
+  const dests=Object.keys(LOCS).filter(lid=>lid!==from&&G.locState[lid]?.isHaven);
+  showModal(card.name,'Move troops from <strong>'+LOCS[from].name+'</strong> to which haven?',dests.map(lid=>({label:LOCS[lid].name,action:()=>{closeModal();showRedArrowTroopPicker(card,from,lid,[]);}})));
+}
+function showRedArrowTroopPicker(card,from,to,picks){
+  const used={};for(const t of picks)used[t]=(used[t]||0)+1;
+  const buttons=[];
+  if(picks.length<3)for(const [type,n] of Object.entries(G.locState[from].friendly||{})){const left=n-(used[type]||0);if(left>0)buttons.push({label:'+ '+type+' ('+left+' left)',action:()=>{closeModal();showRedArrowTroopPicker(card,from,to,[...picks,type]);}});}
+  if(picks.length)buttons.push({label:'Undo last',action:()=>{closeModal();showRedArrowTroopPicker(card,from,to,picks.slice(0,-1));}});
+  if(picks.length)buttons.push({label:'Move '+picks.length+' troop'+(picks.length===1?'':'s')+' — no battle',action:()=>{playEvent(card.id,{fromLocId:from,toLocId:to,picks,battle:false});closeModal();resetUI();render();}});
+  if(picks.length&&G.locState[to].shadowTroops>0)buttons.push({label:'Move '+picks.length+' + battle',action:()=>{playEvent(card.id,{fromLocId:from,toLocId:to,picks,battle:true});closeModal();resetUI();render();}});
+  buttons.push({label:'← Back',action:()=>{closeModal();showRedArrowDestinationPicker(card,from);}});
+  showModal(card.name,'<strong>'+LOCS[from].name+' → '+LOCS[to].name+'</strong><br><br>Select 1–3 friendly troops.<br><strong>Selected:</strong> '+(picks.join(', ')||'none'),buttons);
+}
+function showPalantirNazgulPicker(card,cid,origins){
+  const target=LOCS[G.charState[cid].location].region;
+  const outside=Object.entries(G.nazgul).reduce((sum,[r,n])=>sum+(r===target?0:n),0);
+  const required=Math.min(3,outside),used={};for(const r of origins)used[r]=(used[r]||0)+1;
+  const buttons=[];
+  if(origins.length<required)for(const [r,n] of Object.entries(G.nazgul)){if(r===target)continue;const left=n-(used[r]||0);if(left>0)buttons.push({label:'+ '+(REGIONS[r]?.name||r)+' ('+left+' left)',action:()=>{closeModal();showPalantirNazgulPicker(card,cid,[...origins,r]);}});}
+  if(origins.length)buttons.push({label:'Undo last',action:()=>{closeModal();showPalantirNazgulPicker(card,cid,origins.slice(0,-1));}});
+  if(origins.length===required)buttons.push({label:'Confirm',action:()=>{playEvent(card.id,{charId:cid,nazgulOrigins:origins});closeModal();resetUI();render();}});
+  buttons.push({label:'← Change character',action:()=>{closeModal();handleEventCard(card);}});
+  const picked=origins.map(r=>REGIONS[r]?.name||r).join(', ')||'none';
+  showModal(card.name,'Target: <strong>'+CHARS[cid].name+'</strong> — '+REGIONS[target].name+'<br><br>Choose '+required+' Nazgûl to move there.<br><strong>Selected:</strong> '+picked,buttons);
 }
 
 function showLocPicker(cardId, charId, filter) {
