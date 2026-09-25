@@ -195,6 +195,30 @@ test('Shadow third effects preserve known cards and balance unknowns 16/16/16', 
   assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['umbar-purple'][0]"),'move-2-nazgul');
 });
 
+test('two newly identified Event cards are catalogued', () => {
+  const ctx=makeContext();
+  assert.equal(evalIn(ctx,"EVENT_CARDS.length"),8);
+  assert.equal(evalIn(ctx,"EVENT_CARDS.find(c=>c.effect==='red-arrow').name"),'The Red Arrow');
+  assert.equal(evalIn(ctx,"EVENT_CARDS.find(c=>c.effect==='palantir').name"),'Gaze into a Palantír');
+});
+
+test('The Red Arrow moves 1-3 troops between havens and optional battle shifts Eye', () => {
+  const ctx=makeContext();startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.players[0].hand.push({...EVENT_CARDS.find(c=>c.effect==='red-arrow')});G.locState['the-shire'].friendly.elven=2;G.locState.rivendell.friendly.elven=0;G.locState.rivendell.shadowTroops=0;playEvent('ev6',{fromLocId:'the-shire',toLocId:'rivendell',picks:['elven','elven'],battle:true});",ctx);
+  assert.equal(evalIn(ctx,"G.locState['the-shire'].friendly.elven"),0);
+  assert.equal(evalIn(ctx,"G.locState.rivendell.friendly.elven"),2);
+  assert.equal(evalIn(ctx,"G.eyeRegion"),'rhudaur');
+});
+
+test('Gaze into a Palantir shifts Eye and moves selected Nazgul', () => {
+  const ctx=makeContext();startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.players[0].hand.push({...EVENT_CARDS.find(c=>c.effect==='palantir')});G.nazgul={eriador:2,rhudaur:1,'misty-mountains':1,gondor:1,mordor:4};playEvent('ev7',{charId:'aragorn',nazgulOrigins:['eriador','mordor','mordor']});",ctx);
+  assert.equal(evalIn(ctx,"G.eyeRegion"),'rhudaur');
+  assert.equal(evalIn(ctx,"G.nazgul.rhudaur"),4);
+  assert.equal(evalIn(ctx,"G.nazgul.eriador"),1);
+  assert.equal(evalIn(ctx,"G.nazgul.mordor"),2);
+});
+
 test('Shadow Burdens are tier-gated, unique and modify setup state', () => {
   const baseCtx = makeContext();
   const base = startGame(baseCtx, { numPlayers:1, playerNames:['Base'], charAssignment:[['frodo-sam','aragorn']], difficulty:'legendary+5', cardPrefs:{}, boons:{}, shadowBurdens:[] });

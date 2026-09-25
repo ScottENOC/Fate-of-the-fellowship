@@ -2322,6 +2322,43 @@ function playEvent(cardId, opts) {
         addLog(`Lembas: ${CHARS[opts.charId].name} gains 2 extra actions.`);
       }
       break;
+    case 'red-arrow': {
+      const from=opts.fromLocId, to=opts.toLocId;
+      if(!from||!to||from===to) return err('Choose two different havens.');
+      const fromState=G.locState[from], toState=G.locState[to];
+      if(!fromState?.isHaven||!toState?.isHaven) return err('The Red Arrow can only move troops between current havens.');
+      const picks=Array.isArray(opts.picks)?opts.picks:[];
+      if(picks.length<1||picks.length>3) return err('Move between 1 and 3 friendly troops.');
+      const need={};
+      for(const type of picks){if(!Object.hasOwn(fromState.friendly,type)) return err('Invalid troop type.'); need[type]=(need[type]||0)+1;}
+      for(const [type,n] of Object.entries(need)) if((fromState.friendly[type]||0)<n) return err('Not enough selected troops at the source haven.');
+      for(const type of picks){fromState.friendly[type]--;toState.friendly[type]++;}
+      addLog('The Red Arrow: '+picks.length+' friendly troop(s) move '+LOCS[from].name+' → '+LOCS[to].name+'.');
+      if(opts.battle){
+        G.eyeRegion=LOCS[to].region;
+        addLog('  Eye shifts to '+REGIONS[G.eyeRegion].name+'.');
+        if(toState.shadowTroops>0) rollBattle(to,toState.shadowTroops,null);
+      }
+      break;
+    }
+    case 'palantir': {
+      const cid=opts.charId;
+      if(!cid||!G.charState[cid]?.alive) return err('Choose a living character.');
+      const targetRegion=LOCS[G.charState[cid].location]?.region;
+      if(!targetRegion) return err('That character has no valid region.');
+      const origins=Array.isArray(opts.nazgulOrigins)?opts.nazgulOrigins:[];
+      const availableOutside=Object.entries(G.nazgul).reduce((sum,[r,n])=>sum+(r===targetRegion?0:n),0);
+      const required=Math.min(3,availableOutside);
+      if(origins.length!==required) return err('Choose '+required+' Nazgûl to move.');
+      const need={};
+      for(const r of origins){if(r===targetRegion||!Object.hasOwn(G.nazgul,r)) return err('Invalid Nazgûl origin.');need[r]=(need[r]||0)+1;}
+      for(const [r,n] of Object.entries(need)) if((G.nazgul[r]||0)<n) return err('Not enough Nazgûl in '+(REGIONS[r]?.name||r)+'.');
+      G.eyeRegion=targetRegion;
+      for(const r of origins){G.nazgul[r]--;G.nazgul[targetRegion]=(G.nazgul[targetRegion]||0)+1;}
+      addLog('Gaze into a Palantír: Eye shifts to '+REGIONS[targetRegion].name+'; '+origins.length+' Nazgûl move there.');
+      break;
+    }
+
   }
   return { ok: true };
 }
