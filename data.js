@@ -191,6 +191,7 @@ const CONNECTIONS = [
   { a:'dol-amroth',    b:'lamedon',           type:'normal' },
   { a:'erech',         b:'edoras',            type:'special', cost:['stealth'] },
   { a:'edoras',        b:'eastemnet',         type:'normal' },
+  { a:'fangorn',       b:'edoras',             type:'normal' }, // white player-only connection; not a Shadow battle line
   { a:'eastemnet',     b:'emyn-muil',         type:'normal' },
   { a:'emyn-muil',     b:'north-ithilien',    type:'special', cost:['resistance'] },
   { a:'emyn-muil',     b:'lorien',            type:'special', cost:['friendship'] },
@@ -643,38 +644,56 @@ const OBJECTIVES = [
 ];
 
 // ── SHADOW DECK ──────────────────────────────────────────────────────────────
-// Each card: advance specified battle lines, spawn 1 troop at spawnLoc, trigger nazgulOrder.
-// nazgulOrder: 'search' = move closer + roll search if already in Frodo's region
-//              'move-closest' = move the Nazgûl closest to Frodo from outside his region
-//              'deploy-recall' = deploy from Mordor to Eye region; recall if Eye=Mordor
-const SHADOW_CARDS_BASE = [
-  { id:'sw1', type:'shadow', name:'Moria & Erebor',
-    battleLines:['green','blue'],       spawnLoc:'moria',     nazgulOrder:'search' },
-  { id:'sw2', type:'shadow', name:'Dol Guldur & Minas Tirith',
-    battleLines:['purple','red'],       spawnLoc:'dol-guldur', nazgulOrder:'move-closest' },
-  { id:'sw3', type:'shadow', name:'Dunland & Grey Havens',
-    battleLines:['yellow','grey'],      spawnLoc:'dunland',   nazgulOrder:'search' },
-  { id:'sw4', type:'shadow', name:'Dol Guldur & Erebor',
-    battleLines:['purple','blue'],      spawnLoc:'dol-guldur', nazgulOrder:'move-closest' },
-  { id:'sw5', type:'shadow', name:'Rhûn & Woodland Realm',
-    battleLines:['blue','teal-c'],      spawnLoc:'rhun',      nazgulOrder:'deploy-recall' },
-  { id:'sw6', type:'shadow', name:'Moria & Rivendell',
-    battleLines:['green'],             spawnLoc:'moria',     nazgulOrder:'deploy-recall' },
-  { id:'sw7', type:'shadow', name:'Nûrn & Minas Tirith',
-    battleLines:['red'],               spawnLoc:'nurn',      nazgulOrder:'move-closest' },
-  { id:'sw8', type:'shadow', name:"Nûrn & Helm's Deep",
-    battleLines:['red','orange'],      spawnLoc:'nurn',      nazgulOrder:'search' },
-  { id:'sw9', type:'shadow', name:"Umbar & Helm's Deep",
-    battleLines:['pink','orange'],     spawnLoc:'umbar',     nazgulOrder:'deploy-recall' },
+// Reconstruction of the physical 48-card ordinary Shadow deck.
+// Every ordinary front contains both an Advance route and a Reinforce location.
+// The back of the newly exposed NEXT card selects which half resolves:
+// red flag = Advance, black banner = Reinforce.
+// This front distribution is deliberately marked reconstructed until a verified
+// card-by-card transcription becomes available.
+const SHADOW_ROUTE_SPECS = [
+  { key:'umbar-pink', start:'umbar', lineColor:'pink', lineId:'pink', destination:'grey-havens' },
+  { key:'umbar-purple', start:'umbar', lineColor:'purple', lineId:'purple', destination:'helms-deep' },
+  { key:'umbar-orange', start:'umbar', lineColor:'orange', lineId:'orange-c', destination:'helms-deep' },
+  { key:'near-harad-teal', start:'near-harad', lineColor:'teal', lineId:'teal', destination:'erebor' },
+  { key:'near-harad-purple', start:'near-harad', lineColor:'purple', lineId:'purple-b', destination:'helms-deep' },
+  { key:'near-harad-orange', start:'near-harad', lineColor:'orange', lineId:'orange-d', destination:'helms-deep' },
+  { key:'nurn-teal', start:'nurn', lineColor:'teal', lineId:'teal-b', destination:'erebor' },
+  { key:'nurn-yellow', start:'nurn', lineColor:'yellow', lineId:'yellow-c', destination:'minas-tirith' },
+  { key:'nurn-purple', start:'nurn', lineColor:'purple', lineId:'purple-c', destination:'helms-deep' },
+  { key:'rhun-pink', start:'rhun', lineColor:'pink', lineId:'pink-c', destination:'woodland-realm' },
+  { key:'rhun-orange', start:'rhun', lineColor:'orange', lineId:'orange-e', destination:'woodland-realm' },
+  { key:'rhun-yellow', start:'rhun', lineColor:'yellow', lineId:'yellow-d', destination:'minas-tirith' },
+  { key:'dol-guldur-teal', start:'dol-guldur', lineColor:'teal', lineId:'teal', destination:'erebor' },
+  { key:'dol-guldur-yellow', start:'dol-guldur', lineColor:'yellow', lineId:'yellow-e', destination:'minas-tirith' },
+  { key:'dol-guldur-green', start:'dol-guldur', lineColor:'green', lineId:'green4', destination:'helms-deep' },
+  { key:'moria-teal', start:'moria', lineColor:'teal', lineId:'teal-c', destination:'erebor' },
+  { key:'moria-yellow', start:'moria', lineColor:'yellow', lineId:'yellow-b', destination:'rivendell' },
+  { key:'moria-green', start:'moria', lineColor:'green', lineId:'green', destination:'rivendell' },
+  { key:'isengard-pink', start:'isengard', lineColor:'pink', lineId:'pink-b', destination:'grey-havens' },
+  { key:'isengard-yellow', start:'isengard', lineColor:'yellow', lineId:'yellow', destination:'rivendell' },
+  { key:'isengard-orange', start:'isengard', lineColor:'orange', lineId:'orange-b', destination:'helms-deep' },
 ];
-
-function makeShadowDeck() {
-  // Two copies → 18 cards: 9 drawn during setup (troops only), 9 remain for gameplay
-  return shuffle([
-    ...SHADOW_CARDS_BASE.map(c => ({...c, id: c.id+'a'})),
-    ...SHADOW_CARDS_BASE.map(c => ({...c, id: c.id+'b'})),
-  ]);
+const EXTRA_SHADOW_ROUTE_SPECS = [
+  // Internally this legacy battle-line id is 'grey', but the line is visually purple on the board.
+  { key:'dunland-purple-extra', start:'dunland', lineColor:'purple', lineId:'grey', destination:'grey-havens', back:'red' },
+  { key:'dunland-yellow-extra', start:'dunland', lineColor:'yellow', lineId:'yellow', destination:'rivendell', back:'black' },
+  { key:'dunland-orange-extra', start:'dunland', lineColor:'orange', lineId:'orange', destination:'helms-deep', back:'red' },
+  { key:'minas-morgul-purple-extra', start:'minas-morgul', lineColor:'purple', lineId:'purple-c', destination:'helms-deep', back:'black' },
+  { key:'minas-morgul-yellow-extra', start:'minas-morgul', lineColor:'yellow', lineId:'yellow-c', destination:'minas-tirith', back:'red' },
+  { key:'barad-dur-teal-extra', start:'barad-dur', lineColor:'teal', lineId:'teal-b', destination:'erebor', back:'black' },
+];
+const APPROX_SHADOW_ORDERS=['eye-to-frodo','move-2-nazgul','deploy-nazgul'];
+function makeApproxShadowFront(spec,idSuffix,back,orderIndex){
+  return {id:'sh-'+spec.key+'-'+idSuffix,type:'shadow',name:(LOCS[spec.start]?.name||spec.start)+' → '+(LOCS[spec.destination]?.name||spec.destination),location:spec.start,spawnLoc:spec.start,lineColor:spec.lineColor,lineId:spec.lineId,destination:spec.destination,back,specialOrder:APPROX_SHADOW_ORDERS[orderIndex%APPROX_SHADOW_ORDERS.length],reconstructed:true};
 }
+const NORMAL_SHADOW_CARDS=[];
+SHADOW_ROUTE_SPECS.forEach((spec,i)=>{NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'r','red',i*2));NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'b','black',i*2+1));});
+EXTRA_SHADOW_ROUTE_SPECS.forEach((spec,i)=>NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'x',spec.back,SHADOW_ROUTE_SPECS.length*2+i)));
+const SPECIAL_SHADOW_CARDS=[
+  {id:'special-drums-of-war',type:'special-shadow',name:'The Drums of War',back:'black',effect:'drums',text:'Add 1 shadow troop to Udûn, Barad-dûr, and Minas Morgul.'},
+  {id:'special-wheels-of-saruman',type:'special-shadow',name:'The Wheels of Saruman',back:'red',effect:'wheels',text:'Break Oath: remove 1 Dwarven troop from Iron Hills and 1 from Ered Luin.'},
+];
+function makeShadowDeck(){return shuffle(NORMAL_SHADOW_CARDS.map(c=>({...c})));}
 
 // ── SHADOW LIEUTENANTS ───────────────────────────────────────────────────────
 // Each lieutenant added at even legendary+ thresholds (2+, 4+, 6+, 8+, 10+)
