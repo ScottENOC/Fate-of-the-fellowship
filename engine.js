@@ -1822,40 +1822,44 @@ function drawPlayerCards() {
 }
 
 function resolveSkiesDarken(card) {
-  switch (card.effect) {
-    case 'shadow-grows':
-      G.threatRate = Math.min(G.maxThreat, G.threatRate + 1);
-      addLog(`Threat rate increased to ${G.threatRate}.`);
-      break;
-    case 'i-see-you':
-      const frodoLoc = G.charState['frodo-sam'].location;
-      const frodoRegion = LOCS[frodoLoc].region;
-      if (G.eyeRegion === frodoRegion) {
-        loseHope(2, 'I See You! — Eye already in Frodo\'s region');
-      } else {
-        G.eyeRegion = frodoRegion;
-        addLog(`Eye shifts to ${REGIONS[frodoRegion].name}.`);
-      }
-      break;
-    case 'under-cover':
-      if (card.location && G.locState[card.location]) {
-        const ls = G.locState[card.location];
-        if (!G.capturedStrongholds.includes(card.location)) {
-          for (let i = 0; i < 3; i++) {
-            if (G.shadowSupply > 0) { ls.shadowTroops++; G.shadowSupply--; }
-            else loseHope(1, 'Shadow supply empty');
-          }
-          addLog(`3 shadow troops added to ${LOCS[card.location].name}.`);
-          checkHavenLost(card.location);
-        }
-      }
-      break;
-    case 'danger-intensifies':
-      G.shadowDeck = [...G.shadowDeck, ...shuffle(G.shadowDiscard)];
-      G.shadowDiscard = [];
-      addLog('Shadow discard shuffled back into deck!');
-      break;
+  // 1. THE SHADOW GROWS
+  G.threatRate = Math.min(G.maxThreat, G.threatRate + 1);
+  addLog(`The Shadow Grows: threat rate increased to ${G.threatRate}.`);
+
+  // 2. I SEE YOU!
+  const frodoLoc = G.charState['frodo-sam'].location;
+  const frodoRegion = LOCS[frodoLoc].region;
+  if (G.eyeRegion === frodoRegion) {
+    loseHope(2, 'I See You! — Eye already in Frodo\'s region');
+  } else {
+    G.eyeRegion = frodoRegion;
+    addLog(`I See You!: Eye shifts to ${REGIONS[frodoRegion].name}.`);
   }
+
+  // 3. UNDER COVER OF DARKNESS
+  if (card.location && G.locState[card.location]) {
+    const ls = G.locState[card.location];
+    let added=0;
+    for (let i=0;i<3;i++) {
+      if (G.shadowSupply > 0) { ls.shadowTroops++; G.shadowSupply--; added++; }
+      else loseHope(1,'Shadow supply empty');
+    }
+    addLog(`Under Cover of Darkness: +${added} shadow troop(s) at ${LOCS[card.location].name}.`);
+    if (ls.shadowTroops > 0 && totalFriendlyAt(card.location) > 0) {
+      addLog(`  Battle at ${LOCS[card.location].name}!`);
+      rollBattle(card.location, ls.shadowTroops, null);
+    } else {
+      checkHavenLost(card.location);
+    }
+  }
+
+  // 4. THE DANGER INTENSIFIES
+  if (G.shadowDiscard.length) {
+    G.shadowDeck = [...G.shadowDeck, ...shuffle(G.shadowDiscard)];
+    G.shadowDiscard = [];
+  }
+  addLog('The Danger Intensifies: Shadow discard shuffled onto the top of the deck.');
+
   // Gandalf the White arrives on the next Skies Darken after the Balrog
   if (G.gandalfState === 'awaiting-white') {
     G.gandalfState = 'white';
