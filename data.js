@@ -682,13 +682,80 @@ const EXTRA_SHADOW_ROUTE_SPECS = [
   { key:'udun-yellow-extra', start:'udun', lineColor:'yellow', lineId:'yellow-c', destination:'minas-tirith', back:'red' },
   { key:'barad-dur-teal-extra', start:'barad-dur', lineColor:'teal', lineId:'teal-b', destination:'erebor', back:'black' },
 ];
-const APPROX_SHADOW_ORDERS=['eye-to-frodo','move-2-nazgul','deploy-nazgul'];
-function makeApproxShadowFront(spec,idSuffix,back,orderIndex){
-  return {id:'sh-'+spec.key+'-'+idSuffix,type:'shadow',name:(LOCS[spec.start]?.name||spec.start)+' → '+(LOCS[spec.destination]?.name||spec.destination),location:spec.start,spawnLoc:spec.start,lineColor:spec.lineColor,lineId:spec.lineId,destination:spec.destination,back,specialOrder:APPROX_SHADOW_ORDERS[orderIndex%APPROX_SHADOW_ORDERS.length],reconstructed:true};
+// Known third-effect assignments. Each array maps to card copies in generation order
+// (red-backed first, then black-backed for paired fronts). Where the physical
+// back is not yet known, this copy-to-back association is deliberately provisional.
+// Add newly identified cards here; the unknown remainder automatically rebalances.
+const KNOWN_SHADOW_ORDER_SEQUENCES = {
+  // Nine cards previously transcribed from the rulebook page. Preserve their
+  // original implemented behaviour exactly.
+  'moria-teal':          ['search'],
+  'dol-guldur-yellow':   ['move-closest'],
+  'dunland-purple-extra':['search'],
+  'dol-guldur-teal':     ['move-closest'],
+  'rhun-pink':           ['deploy-recall'],
+  'moria-green':         ['deploy-recall'],
+  'nurn-yellow':         ['move-closest'],
+  'nurn-purple':         ['search'],
+  'umbar-orange':        ['deploy-recall','eye-to-frodo'],
+
+  // Additional cards identified manually after the initial transcription.
+  'isengard-orange':     ['eye-to-frodo'],
+  'umbar-purple':        ['move-2-nazgul'],
+};
+
+function shadowOrderFamily(order) {
+  if (order === 'search' || order === 'eye-to-frodo') return 'eye';
+  if (order === 'move-closest' || order === 'move-2-nazgul') return 'move';
+  if (order === 'deploy-recall' || order === 'deploy-nazgul') return 'deploy';
+  return null;
 }
+
+function makeApproxShadowFront(spec,idSuffix,back,knownOrder=null){
+  return {
+    id:'sh-'+spec.key+'-'+idSuffix, type:'shadow',
+    name:(LOCS[spec.start]?.name||spec.start)+' → '+(LOCS[spec.destination]?.name||spec.destination),
+    location:spec.start, spawnLoc:spec.start, lineColor:spec.lineColor, lineId:spec.lineId,
+    destination:spec.destination, back, specialOrder:knownOrder,
+    orderKnown:!!knownOrder, reconstructed:true, routeKey:spec.key,
+  };
+}
+
 const NORMAL_SHADOW_CARDS=[];
-SHADOW_ROUTE_SPECS.forEach((spec,i)=>{NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'r','red',i*2));NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'b','black',i*2+1));});
-EXTRA_SHADOW_ROUTE_SPECS.forEach((spec,i)=>NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'x',spec.back,SHADOW_ROUTE_SPECS.length*2+i)));
+SHADOW_ROUTE_SPECS.forEach(spec=>{
+  const known=KNOWN_SHADOW_ORDER_SEQUENCES[spec.key]||[];
+  NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'r','red',known[0]||null));
+  NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'b','black',known[1]||null));
+});
+EXTRA_SHADOW_ROUTE_SPECS.forEach(spec=>{
+  const known=KNOWN_SHADOW_ORDER_SEQUENCES[spec.key]||[];
+  NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'x',spec.back,known[0]||null));
+});
+
+// The actual card-by-card order distribution is incomplete. Keep all known
+// cards fixed, then randomly assign only unknown cards from a quota pool that
+// makes the complete ordinary deck exactly 16 Eye/Search, 16 Move, 16 Deploy.
+(function fillUnknownShadowOrders(){
+  const counts={eye:0,move:0,deploy:0};
+  for(const card of NORMAL_SHADOW_CARDS){
+    if(!card.specialOrder) continue;
+    const family=shadowOrderFamily(card.specialOrder);
+    if(!family) throw new Error('Unknown Shadow order '+card.specialOrder);
+    counts[family]++;
+  }
+  const fillOrders={eye:'search',move:'move-closest',deploy:'deploy-recall'};
+  const pool=[];
+  for(const family of ['eye','move','deploy']){
+    const need=16-counts[family];
+    if(need<0) throw new Error('Too many known '+family+' Shadow orders for 16-card quota');
+    for(let i=0;i<need;i++) pool.push(fillOrders[family]);
+  }
+  const shuffled=shuffle(pool);
+  const unknown=NORMAL_SHADOW_CARDS.filter(c=>!c.specialOrder);
+  if(shuffled.length!==unknown.length) throw new Error('Shadow order quota does not match unknown cards');
+  unknown.forEach((card,i)=>{card.specialOrder=shuffled[i];card.orderKnown=false;});
+})();
+
 const SPECIAL_SHADOW_CARDS=[
   {id:'special-drums-of-war',type:'special-shadow',name:'The Drums of War',back:'black',effect:'drums',text:'Add 1 Shadow troop to each Shadow stronghold in Mordor.'},
   {id:'special-wheels-of-saruman',type:'special-shadow',name:'The Wheels of Saruman',back:'red',effect:'wheels',text:'Choose 1: remove any 2 friendly troops from the board; the current player discards a total of 2 cards and/or tokens; or lose 1 Hope.'},

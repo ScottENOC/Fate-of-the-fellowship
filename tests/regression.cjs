@@ -176,6 +176,25 @@ test('Wheels hides impossible consequences in the UI', () => {
   assert.ok(indexSource.includes("buttons.push({label:'Lose 1 Hope'"));
 });
 
+test('Shadow third effects preserve known cards and balance unknowns 16/16/16', () => {
+  const ctx=makeContext();
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>shadowOrderFamily(c.specialOrder)==='eye').length"),16);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>shadowOrderFamily(c.specialOrder)==='move').length"),16);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>shadowOrderFamily(c.specialOrder)==='deploy').length"),16);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>c.orderKnown).length"),12);
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['moria-teal'][0]"),'search');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['dol-guldur-yellow'][0]"),'move-closest');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['dunland-purple-extra'][0]"),'search');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['dol-guldur-teal'][0]"),'move-closest');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['rhun-pink'][0]"),'deploy-recall');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['moria-green'][0]"),'deploy-recall');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['nurn-yellow'][0]"),'move-closest');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['nurn-purple'][0]"),'search');
+  assert.deepEqual(Array.from(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['umbar-orange']")),['deploy-recall','eye-to-frodo']);
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['isengard-orange'][0]"),'eye-to-frodo');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['umbar-purple'][0]"),'move-2-nazgul');
+});
+
 test('Shadow Burdens are tier-gated, unique and modify setup state', () => {
   const baseCtx = makeContext();
   const base = startGame(baseCtx, { numPlayers:1, playerNames:['Base'], charAssignment:[['frodo-sam','aragorn']], difficulty:'legendary+5', cardPrefs:{}, boons:{}, shadowBurdens:[] });
