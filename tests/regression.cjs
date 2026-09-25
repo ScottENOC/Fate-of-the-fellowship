@@ -149,17 +149,50 @@ test('Fangorn and Edoras have a white player-only connection', () => {
   assert.equal(evalIn(ctx,"BATTLE_LINES.some(bl=>bl.locs.some((x,i)=>x==='fangorn'&&bl.locs[i+1]==='edoras'))"),false);
 });
 
-test('Wheels of Saruman breaks the Dwarven oath at Iron Hills and Ered Luin', () => {
-  const ctx=makeContext(); startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
-  vm.runInContext("G.locState['iron-hills'].friendly.dwarven=1;G.locState['ered-luin'].friendly.dwarven=1;resolveSpecialShadow(SPECIAL_SHADOW_CARDS.find(c=>c.effect==='wheels'));",ctx);
-  assert.equal(evalIn(ctx,"G.locState['iron-hills'].friendly.dwarven"),0);
-  assert.equal(evalIn(ctx,"G.locState['ered-luin'].friendly.dwarven"),0);
+test('clarified Shadow extras include Udun yellow and omit Udun green', () => {
+  const ctx=makeContext();
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.some(c=>c.location==='udun'&&c.lineColor==='yellow')"),true);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.some(c=>c.location==='udun'&&c.lineColor==='green')"),false);
 });
 
-test('Drums of War reinforces Udun, Barad-dur and Minas Morgul', () => {
-  const ctx=makeContext(); startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
-  vm.runInContext("G.locState.udun.shadowTroops=0;G.locState['barad-dur'].shadowTroops=0;G.locState['minas-morgul'].shadowTroops=0;G.shadowSupply=10;resolveSpecialShadow(SPECIAL_SHADOW_CARDS.find(c=>c.effect==='drums'));",ctx);
-  assert.equal(evalIn(ctx,'G.locState.udun.shadowTroops'),1);assert.equal(evalIn(ctx,"G.locState['barad-dur'].shadowTroops"),1);assert.equal(evalIn(ctx,"G.locState['minas-morgul'].shadowTroops"),1);
+test('Drums of War dynamically reinforces current Mordor Shadow strongholds', () => {
+  const ctx=makeContext();startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.locState.udun.shadowTroops=0;G.locState['barad-dur'].shadowTroops=0;G.locState['minas-morgul'].shadowTroops=0;G.locState['barad-dur'].isShadowStronghold=false;G.shadowSupply=10;resolveSpecialShadow(SPECIAL_SHADOW_CARDS.find(c=>c.effect==='drums'));",ctx);
+  assert.equal(evalIn(ctx,'G.locState.udun.shadowTroops'),1);
+  assert.equal(evalIn(ctx,"G.locState['minas-morgul'].shadowTroops"),1);
+  assert.equal(evalIn(ctx,"G.locState['barad-dur'].shadowTroops"),0);
+});
+
+test('Wheels of Saruman allows legal hope, troop, and mixed resource choices', () => {
+  const ctx=makeContext();startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.ui.pendingWheels=true;__h=G.hope;__r=resolveWheelsOfSaruman('hope')",ctx);assert.equal(evalIn(ctx,'__r.ok'),true);assert.equal(evalIn(ctx,'G.hope'),evalIn(ctx,'__h')-1);
+  vm.runInContext("G.phase='actions';G.ui.pendingWheels=true;G.locState['minas-tirith'].friendly.gondor=2;__r2=resolveWheelsOfSaruman('troops',{picks:[{locId:'minas-tirith',type:'gondor'},{locId:'minas-tirith',type:'gondor'}]})",ctx);assert.equal(evalIn(ctx,'__r2.ok'),true);assert.equal(evalIn(ctx,"G.locState['minas-tirith'].friendly.gondor"),0);
+  vm.runInContext("G.ui.pendingWheels=true;G.players[0].tokens.valor=1;G.players[0].hand=[{id:'x',name:'X'}];G.playerDiscard=[];__r3=resolveWheelsOfSaruman('resources',{cardIds:['x'],tokenCounts:{valor:1}})",ctx);assert.equal(evalIn(ctx,'__r3.ok'),true);assert.equal(evalIn(ctx,'G.players[0].hand.length'),0);assert.equal(evalIn(ctx,'G.players[0].tokens.valor'),0);
+});
+
+test('Wheels hides impossible consequences in the UI', () => {
+  assert.ok(indexSource.includes("if(wheelsFriendlyTroopCount()>=2)"));
+  assert.ok(indexSource.includes("if(wheelsDiscardableCount()>=2)"));
+  assert.ok(indexSource.includes("buttons.push({label:'Lose 1 Hope'"));
+});
+
+test('Shadow third effects preserve known cards and balance unknowns 16/16/16', () => {
+  const ctx=makeContext();
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>shadowOrderFamily(c.specialOrder)==='eye').length"),16);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>shadowOrderFamily(c.specialOrder)==='move').length"),16);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>shadowOrderFamily(c.specialOrder)==='deploy').length"),16);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>c.orderKnown).length"),12);
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['moria-teal'][0]"),'search');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['dol-guldur-yellow'][0]"),'move-closest');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['dunland-purple-extra'][0]"),'search');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['dol-guldur-teal'][0]"),'move-closest');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['rhun-pink'][0]"),'deploy-recall');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['moria-green'][0]"),'deploy-recall');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['nurn-yellow'][0]"),'move-closest');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['nurn-purple'][0]"),'search');
+  assert.deepEqual(Array.from(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['umbar-orange']")),['deploy-recall','eye-to-frodo']);
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['isengard-orange'][0]"),'eye-to-frodo');
+  assert.equal(evalIn(ctx,"KNOWN_SHADOW_ORDER_SEQUENCES['umbar-purple'][0]"),'move-2-nazgul');
 });
 
 test('Shadow Burdens are tier-gated, unique and modify setup state', () => {
