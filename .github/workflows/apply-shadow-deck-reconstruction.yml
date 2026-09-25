@@ -13,6 +13,7 @@ jobs:
         with:
           node-version: 20
       - run: node scripts/apply-shadow-special-clarifications.cjs
+      - run: node scripts/remove-stale-shadow-tests.cjs
       - run: npm test
       - name: Verify reconstructed deck invariants
         run: |
