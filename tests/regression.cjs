@@ -85,7 +85,8 @@ test('standard game initialises core state', () => {
   assert.equal(g.plusLevel, 0);
   assert.equal(g.phase, 'actions');
   assert.equal(g.winner, null);
-  assert.equal(g.shadowDiscard.length, 9, 'standard setup should draw 9 shadow cards');
+  assert.equal(g.shadowDiscard.length, 11, 'standard setup should draw 9 ordinary shadow cards and seed 2 specials in discard');
+  assert.equal(g.shadowDeck.length, 39, '48 ordinary cards minus 9 setup draws should leave 39');
   assert.equal(g.shadowLieutenants.length, 0);
   assert.equal(g.charState['frodo-sam'].player, 0);
   assert.equal(g.charState.aragorn.player, 0);
@@ -106,8 +107,59 @@ test('Legendary+ scaling remains deterministic by tier', () => {
 
   assert.equal(g.difficulty, 'legendary+4');
   assert.equal(g.plusLevel, 4);
-  assert.equal(g.shadowDiscard.length, 11, 'Legendary+4 should add 2 setup draws');
+  assert.equal(g.shadowDiscard.length, 13, 'Legendary+4 should have 11 setup draws plus 2 seeded specials');
   assert.equal(g.shadowLieutenants.length, 2, 'Legendary+4 should spawn 2 shadow lieutenants');
+});
+
+test('reconstructed Shadow deck has 48 ordinary cards split evenly by back', () => {
+  const ctx=makeContext();
+  assert.equal(evalIn(ctx,'NORMAL_SHADOW_CARDS.length'),48);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>c.back==='red').length"),24);
+  assert.equal(evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>c.back==='black').length"),24);
+  assert.equal(evalIn(ctx,'SPECIAL_SHADOW_CARDS.length'),2);
+  assert.equal(evalIn(ctx,"SPECIAL_SHADOW_CARDS.find(c=>c.effect==='drums').back"),'black');
+  assert.equal(evalIn(ctx,"SPECIAL_SHADOW_CARDS.find(c=>c.effect==='wheels').back"),'red');
+});
+
+test('standard setup seeds two specials in discard and leaves 39 ordinary cards', () => {
+  const ctx=makeContext(); const g=startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  assert.equal(g.shadowDeck.filter(c=>c.type==='special-shadow').length,0);
+  assert.deepEqual(Array.from(g.shadowDiscard.filter(c=>c.type==='special-shadow').map(c=>c.effect).sort()),['drums','wheels']);
+  assert.equal(g.shadowDeck.length,39); assert.equal(g.shadowSupply,21);
+});
+
+test('newly exposed Shadow-card back selects advance versus reinforce', () => {
+  const ctx=makeContext(); startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.phase='draw-shadow';G.threatRate=1;Object.values(G.locState).forEach(ls=>ls.shadowTroops=0);G.locState.isengard.shadowTroops=1;__drawn={...NORMAL_SHADOW_CARDS.find(c=>c.location==='isengard'&&c.lineId==='orange-b')};__selector={...NORMAL_SHADOW_CARDS.find(c=>c.back==='red')};G.shadowDeck=[__selector,__drawn];G.shadowDiscard=[];drawShadowCards();",ctx);
+  assert.equal(evalIn(ctx,'G.locState.isengard.shadowTroops'),0); assert.equal(evalIn(ctx,"G.locState['fords-of-isen'].shadowTroops"),1);
+  const ctx2=makeContext(); startGame(ctx2,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.phase='draw-shadow';G.threatRate=1;G.shadowSupply=10;Object.values(G.locState).forEach(ls=>ls.shadowTroops=0);__drawn={...NORMAL_SHADOW_CARDS.find(c=>c.location==='isengard'&&c.lineId==='orange-b')};__selector={...NORMAL_SHADOW_CARDS.find(c=>c.back==='black')};G.shadowDeck=[__selector,__drawn];G.shadowDiscard=[];drawShadowCards();",ctx2);
+  assert.equal(evalIn(ctx2,'G.locState.isengard.shadowTroops'),1);
+});
+
+test('Dunland reconstructed routes use purple, yellow and orange', () => {
+  const ctx=makeContext();
+  const rows=evalIn(ctx,"NORMAL_SHADOW_CARDS.filter(c=>c.location==='dunland').map(c=>c.lineColor).sort()");
+  assert.deepEqual(Array.from(rows),['orange','purple','yellow']);
+});
+
+test('Fangorn and Edoras have a white player-only connection', () => {
+  const ctx=makeContext();
+  assert.equal(evalIn(ctx,"CONNECTIONS.some(c=>((c.a==='fangorn'&&c.b==='edoras')||(c.a==='edoras'&&c.b==='fangorn'))&&c.type==='normal')"),true);
+  assert.equal(evalIn(ctx,"BATTLE_LINES.some(bl=>bl.locs.some((x,i)=>x==='fangorn'&&bl.locs[i+1]==='edoras'))"),false);
+});
+
+test('Wheels of Saruman breaks the Dwarven oath at Iron Hills and Ered Luin', () => {
+  const ctx=makeContext(); startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.locState['iron-hills'].friendly.dwarven=1;G.locState['ered-luin'].friendly.dwarven=1;resolveSpecialShadow(SPECIAL_SHADOW_CARDS.find(c=>c.effect==='wheels'));",ctx);
+  assert.equal(evalIn(ctx,"G.locState['iron-hills'].friendly.dwarven"),0);
+  assert.equal(evalIn(ctx,"G.locState['ered-luin'].friendly.dwarven"),0);
+});
+
+test('Drums of War reinforces Udun, Barad-dur and Minas Morgul', () => {
+  const ctx=makeContext(); startGame(ctx,{numPlayers:1,playerNames:['Tester'],charAssignment:[['frodo-sam','aragorn']],difficulty:'standard',cardPrefs:{},boons:{}});
+  vm.runInContext("G.locState.udun.shadowTroops=0;G.locState['barad-dur'].shadowTroops=0;G.locState['minas-morgul'].shadowTroops=0;G.shadowSupply=10;resolveSpecialShadow(SPECIAL_SHADOW_CARDS.find(c=>c.effect==='drums'));",ctx);
+  assert.equal(evalIn(ctx,'G.locState.udun.shadowTroops'),1);assert.equal(evalIn(ctx,"G.locState['barad-dur'].shadowTroops"),1);assert.equal(evalIn(ctx,"G.locState['minas-morgul'].shadowTroops"),1);
 });
 
 test('Shadow Burdens are tier-gated, unique and modify setup state', () => {

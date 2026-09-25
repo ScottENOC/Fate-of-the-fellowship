@@ -254,11 +254,11 @@ function newGame(cfg) {
       rohirrim: Math.max(0, 5 - (troopReserved.rohirrim || 0) + Math.max(0, boons['rohan-troop']  || 0)),
       gondor:   Math.max(0, 5 - (troopReserved.gondor   || 0) + Math.max(0, boons['gondor-troop'] || 0)),
     },
-    shadowSupply: Math.max(0, 45 - 18 - (9 + extraSetupDraws) - Math.max(0, boons['shadow-troop'] || 0)), // legacy boon removes reserve troops
+    shadowSupply: Math.max(0, 48 - 18 - (9 + extraSetupDraws) - Math.max(0, boons['shadow-troop'] || 0)), // physical game has 48 shadow troops; legacy boon removes reserve troops
     playerDeck,
     playerDiscard: [],
     shadowDeck,
-    shadowDiscard: [...shadowSetupDiscard],
+    shadowDiscard: [...shadowSetupDiscard, ...SPECIAL_SHADOW_CARDS.map(c => ({...c}))],
     currentPlayer: 0,
     phase: 'actions',     // 'actions' | 'draw-player' | 'draw-shadow' | 'gameover'
     winner: null,         // null | 'players' | 'shadow'
@@ -1892,43 +1892,23 @@ function drawShadowCards() {
 
 function resolveShadowCard(card) {
   if (card.type === 'special-shadow') { resolveSpecialShadow(card); return; }
-
-  // 1. Advance specified battle lines (advancing all lines is only for special cards)
-  const lines = card.battleLines;
-  if (lines && lines.length > 0) {
-    advanceSpecificLines(lines);
-  } else if (card.topSection === 'advance') {
-    resolveAdvance();
+  const selectorBack = G.shadowDeck[G.shadowDeck.length - 1]?.back || card.back || 'black';
+  if (selectorBack === 'red') {
+    addLog('  Red flag exposed — ADVANCE '+(LOCS[card.location]?.name||card.location)+' → '+(LOCS[card.destination]?.name||card.destination)+' ('+card.lineColor+').');
+    advanceShadowRoute(card);
+  } else {
+    addLog('  Black banner exposed — REINFORCE '+(LOCS[card.location]?.name||card.location)+'.');
+    resolveReinforce(card);
   }
-
-  // 2. Spawn troop at spawnLoc (no effect if captured stronghold)
-  const spawnId = card.spawnLoc || card.location;
-  if (spawnId && G.locState[spawnId]) {
-    if (!G.capturedStrongholds.includes(spawnId)) {
-      if (G.shadowSupply > 0) {
-        G.locState[spawnId].shadowTroops++;
-        G.shadowSupply--;
-        addLog(`  +1 shadow troop at ${LOCS[spawnId].name}.`);
-        // Gothmog: Commander's Reinforcement — extra troop in Mordor-region locations
-        if (G.shadowLieutenants.includes('gothmog') && LOCS[spawnId]?.region === 'mordor' && G.shadowSupply > 0) {
-          G.locState[spawnId].shadowTroops++;
-          G.shadowSupply--;
-          addLog(`  ⚔ Gothmog's Reinforcement: +1 extra shadow troop at ${LOCS[spawnId].name}!`);
-        }
-        const tf = totalFriendlyAt(spawnId);
-        if (tf > 0 && G.locState[spawnId].isHaven) rollBattle(spawnId, 1, null);
-        else checkHavenLost(spawnId);
-        checkDunlandShadowCapture();
-      } else { loseHope(1, 'Shadow supply empty'); }
-    } else { addLog(`  ${LOCS[spawnId].name} is captured — no reinforcement.`); }
-  }
-
-  // 3. Nazgûl order
-  const order = card.nazgulOrder || card.specialOrder;
-  if (G.ui.ignoreNextOrder) {
-    G.ui.ignoreNextOrder = false;
-    addLog('  Special order ignored (event card effect).');
-  } else { resolveSpecialOrder(order); }
+}
+function advanceShadowRoute(card) {
+  const line=BATTLE_LINES.find(bl=>bl.id===card.lineId);
+  if(!line){addLog('  Missing battle line '+card.lineId+'; no advance.');return;}
+  const startIdx=line.locs.indexOf(card.location),endIdx=line.locs.indexOf(card.destination);
+  if(startIdx<0||endIdx<=startIdx){addLog('  Invalid reconstructed route '+card.location+' → '+card.destination+'; no advance.');return;}
+  const route=line.locs.slice(startIdx,endIdx+1);
+  for(let i=route.length-2;i>=0;i--){const from=route[i],to=route[i+1],fls=G.locState[from];if(!fls||fls.shadowTroops<=0)continue;const n=fls.shadowTroops;fls.shadowTroops=0;G.locState[to].shadowTroops+=n;addLog('  '+LOCS[from].name+' → '+LOCS[to].name+': '+n+' troop(s)');}
+  for(let i=route.length-1;i>=0;i--){const locId=route[i],ls=G.locState[locId],tf=totalFriendlyAt(locId);if(ls.shadowTroops>0&&tf>0){addLog('Battle at '+LOCS[locId].name+'!');rollBattle(locId,ls.shadowTroops,null);}else checkHavenLost(locId);}
 }
 
 function resolveAdvance() {
@@ -2053,6 +2033,8 @@ function resolveSpecialOrder(order) {
       G.eyeRegion = frodoRegion;
       addLog(`  Eye shifts to ${REGIONS[frodoRegion].name} (Frodo's region).`);
     }
+  } else if (order === 'move-2-nazgul') {
+    moveNazgulCloser(2);
   } else if (order === 'nazgul-closer' || order === 'move-closest') {
     // Move the Nazgûl closest to Frodo (from outside his region) 1 step toward him
     moveNazgulCloser(1);
@@ -2160,23 +2142,25 @@ function stepToward(from, to) {
 
 function resolveSpecialShadow(card) {
   if (card.effect === 'drums') {
-    addLog('DRUMS OF WAR!');
-    for (let i = 0; i < 2; i++) {
-      if (G.shadowSupply > 0) { G.locState['moria'].shadowTroops++; G.shadowSupply--; }
+    addLog('DRUMS OF WAR! +1 at Udûn, Barad-dûr, and Minas Morgul.');
+    for (const locId of ['udun','barad-dur','minas-morgul']) {
+      if (G.shadowSupply > 0) { G.locState[locId].shadowTroops++; G.shadowSupply--; if (totalFriendlyAt(locId)>0) rollBattle(locId,G.locState[locId].shadowTroops,null); else checkHavenLost(locId); }
+      else loseHope(1,'Shadow supply empty');
     }
-    addLog('  +2 shadow troops at Moria.');
-    resolveAdvance();
-  } else if (card.effect === 'wheels') {
-    addLog('WHEELS OF SARUMAN!');
-    if (!G.capturedStrongholds.includes('isengard') && G.shadowSupply >= 2) {
-      G.locState['isengard'].shadowTroops += 2; G.shadowSupply -= 2;
-      addLog('  +2 shadow troops at Isengard.');
+    return;
+  }
+  if (card.effect === 'wheels') {
+    addLog('WHEELS OF SARUMAN! Break Oath.');
+    for (const locId of ['iron-hills','ered-luin']) {
+      const friendly=G.locState[locId]?.friendly;
+      if (!friendly || (friendly.dwarven||0) <= 0) {
+        addLog('  Break Oath: no Dwarven troop at '+LOCS[locId].name+' to remove.');
+        continue;
+      }
+      friendly.dwarven--;
+      G.troopSupply.dwarven=(G.troopSupply.dwarven||0)+1;
+      addLog('  Break Oath: removed 1 Dwarven troop from '+LOCS[locId].name+'.');
     }
-    if (!G.capturedStrongholds.includes('helms-deep') && G.shadowSupply > 0) {
-      G.locState['helms-deep'].shadowTroops++; G.shadowSupply--;
-      addLog('  +1 shadow troop at Helm\'s Deep.');
-    }
-    checkHavenLost('helms-deep');
   }
 }
 
