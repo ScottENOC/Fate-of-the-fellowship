@@ -1,0 +1,45 @@
+name: Apply shadow deck reconstruction
+on:
+  push:
+    branches: [feature/shadow-deck-reconstruction]
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/apply-shadow-deck-reconstruction-v2.cjs
+      - run: node scripts/refine-shadow-deck-reconstruction.cjs
+      - run: node scripts/fix-shadow-deck-test.cjs
+      - run: node scripts/apply-shadow-special-clarifications.cjs
+      - run: npm test
+      - name: Verify reconstructed deck invariants
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),vm=require('vm');
+          const src=fs.readFileSync('data.js','utf8');
+          const ctx=vm.createContext({Math,console});
+          vm.runInContext(src,ctx);
+          const red=vm.runInContext("NORMAL_SHADOW_CARDS.filter(c=>c.back==='red').length",ctx);
+          const black=vm.runInContext("NORMAL_SHADOW_CARDS.filter(c=>c.back==='black').length",ctx);
+          const total=vm.runInContext('NORMAL_SHADOW_CARDS.length',ctx);
+          const dunland=vm.runInContext("NORMAL_SHADOW_CARDS.filter(c=>c.location==='dunland').map(c=>c.lineColor).sort().join(',')",ctx);
+          const udunYellow=vm.runInContext("NORMAL_SHADOW_CARDS.some(c=>c.location==='udun'&&c.lineColor==='yellow')",ctx);
+          const udunGreen=vm.runInContext("NORMAL_SHADOW_CARDS.some(c=>c.location==='udun'&&c.lineColor==='green')",ctx);
+          const fangornEdoras=vm.runInContext("CONNECTIONS.some(c=>((c.a==='fangorn'&&c.b==='edoras')||(c.a==='edoras'&&c.b==='fangorn'))&&c.type==='normal')",ctx);
+          if(total!==48||red!==24||black!==24) throw new Error(`bad backs ${total}/${red}/${black}`);
+          if(dunland!=='orange,purple,yellow') throw new Error('bad Dunland routes '+dunland);
+          if(!udunYellow||udunGreen) throw new Error('bad Udun route assumptions');
+          if(!fangornEdoras) throw new Error('missing Fangorn-Edoras connection');
+          NODE
+      - name: Commit source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add data.js engine.js index.html tests/regression.cjs
+          git commit -m "Clarify Shadow deck and special-card rules [shadow-deck-reconstruction]"
+          git push
