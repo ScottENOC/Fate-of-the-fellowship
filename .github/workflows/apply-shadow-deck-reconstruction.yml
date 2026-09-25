@@ -1,0 +1,35 @@
+name: Apply shadow deck reconstruction
+on:
+  push:
+    branches: [feature/shadow-deck-reconstruction]
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/apply-shadow-deck-reconstruction.cjs
+      - run: npm test
+      - name: Verify reconstructed deck invariants
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),vm=require('vm');
+          const src=fs.readFileSync('data.js','utf8');
+          const ctx=vm.createContext({Math,console});
+          vm.runInContext(src,ctx);
+          const red=vm.runInContext("NORMAL_SHADOW_CARDS.filter(c=>c.back==='red').length",ctx);
+          const black=vm.runInContext("NORMAL_SHADOW_CARDS.filter(c=>c.back==='black').length",ctx);
+          const total=vm.runInContext('NORMAL_SHADOW_CARDS.length',ctx);
+          if(total!==48||red!==24||black!==24) throw new Error({total,red,black});
+          NODE
+      - name: Commit source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add data.js engine.js tests/regression.cjs
+          git commit -m "Reconstruct 50-card Shadow deck [shadow-deck-reconstruction]"
+          git push
