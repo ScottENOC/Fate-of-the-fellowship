@@ -14,6 +14,7 @@ jobs:
           node-version: 20
       - run: node scripts/apply-shadow-deck-reconstruction-v2.cjs
       - run: node scripts/refine-shadow-deck-reconstruction.cjs
+      - run: node scripts/fix-shadow-deck-test.cjs
       - run: npm test
       - name: Verify reconstructed deck invariants
         run: |
