@@ -1667,6 +1667,39 @@ function grantTestLP(n) {
   buildLegacyBoons();
 }
 
+let _wheelsTroopPicks=[];
+let _wheelsResourcePicks={cardIds:[],tokenCounts:{}};
+function finishWheels(choice,payload={}){const r=resolveWheelsOfSaruman(choice,payload);if(r?.error){showToast(r.error);return;}window.__wheelsPromptOpen=false;closeModal();render();}
+function showWheelsChoice(){
+  if(!G?.ui?.pendingWheels){window.__wheelsPromptOpen=false;return;}
+  const buttons=[];
+  if(wheelsFriendlyTroopCount()>=2)buttons.push({label:'Remove 2 friendly troops',action:()=>{_wheelsTroopPicks=[];showWheelsTroopPicker();}});
+  if(wheelsDiscardableCount()>=2)buttons.push({label:'Discard 2 cards/tokens',action:()=>{_wheelsResourcePicks={cardIds:[],tokenCounts:{}};showWheelsResourcePicker();}});
+  buttons.push({label:'Lose 1 Hope',action:()=>finishWheels('hope')});
+  showModal('⚙ The Wheels of Saruman','Choose one consequence. Options you cannot fully pay are not shown.',buttons);
+}
+function showWheelsTroopPicker(){
+  const groups=[];for(const [locId,ls] of Object.entries(G.locState))for(const [type,n] of Object.entries(ls.friendly||{}))if(n>0)groups.push({locId,type,n});
+  const used={};for(const p of _wheelsTroopPicks){const k=p.locId+'|'+p.type;used[k]=(used[k]||0)+1;}
+  const buttons=[];for(const g of groups){const k=g.locId+'|'+g.type,u=used[k]||0;if(u<g.n&&_wheelsTroopPicks.length<2)buttons.push({label:'+ '+LOCS[g.locId].name+' — '+g.type+' ('+(g.n-u)+' left)',action:()=>{_wheelsTroopPicks.push({locId:g.locId,type:g.type});showWheelsTroopPicker();}});}
+  if(_wheelsTroopPicks.length)buttons.push({label:'Undo last',action:()=>{_wheelsTroopPicks.pop();showWheelsTroopPicker();}});
+  if(_wheelsTroopPicks.length===2)buttons.push({label:'Confirm 2 troops',action:()=>finishWheels('troops',{picks:_wheelsTroopPicks})});
+  buttons.push({label:'← Back',action:showWheelsChoice});
+  const names=_wheelsTroopPicks.map(p=>LOCS[p.locId].name+' — '+p.type).join('<br>')||'None yet';
+  showModal('Wheels — remove troops','Choose exactly 2 friendly troops.<br><br><strong>Selected:</strong><br>'+names,buttons);
+}
+function showWheelsResourcePicker(){
+  const p=G.players[G.currentPlayer],picked=new Set(_wheelsResourcePicks.cardIds);
+  const total=_wheelsResourcePicks.cardIds.length+Object.values(_wheelsResourcePicks.tokenCounts).reduce((a,b)=>a+b,0);
+  const buttons=[];
+  if(total<2){for(const c of p.hand)if(!picked.has(c.id))buttons.push({label:'+ Card: '+c.name,action:()=>{_wheelsResourcePicks.cardIds.push(c.id);showWheelsResourcePicker();}});for(const [sym,n] of Object.entries(p.tokens)){const u=_wheelsResourcePicks.tokenCounts[sym]||0;if(u<n)buttons.push({label:'+ Token: '+(SYM[sym]?.icon||sym)+' '+(SYM[sym]?.name||sym),action:()=>{_wheelsResourcePicks.tokenCounts[sym]=u+1;showWheelsResourcePicker();}});}}
+  if(total>0)buttons.push({label:'Reset selection',action:()=>{_wheelsResourcePicks={cardIds:[],tokenCounts:{}};showWheelsResourcePicker();}});
+  if(total===2)buttons.push({label:'Confirm 2 resources',action:()=>finishWheels('resources',_wheelsResourcePicks)});
+  buttons.push({label:'← Back',action:showWheelsChoice});
+  const cards=_wheelsResourcePicks.cardIds.map(id=>p.hand.find(c=>c.id===id)?.name||id);const toks=Object.entries(_wheelsResourcePicks.tokenCounts).flatMap(([s,n])=>Array(n).fill((SYM[s]?.icon||s)+' '+(SYM[s]?.name||s)));
+  showModal('Wheels — discard resources','Choose exactly 2 cards/tokens in any combination.<br><br><strong>Selected:</strong><br>'+([...cards,...toks].join('<br>')||'None yet'),buttons);
+}
+
 function showUtilityMenu() {
   const buttons = [
     { label:'💾 Save', action:() => { closeModal(); saveGame(); cloudSave(); showToast('💾 Saved'); } },
@@ -2159,6 +2192,10 @@ function render() {
   try { renderLog(); } catch(e) { console.error('renderLog:', e); }
   try { renderMap(); } catch(e) { console.error('renderMap:', e); }
   if (G.phase === 'gameover') { recordRoguelikeRunIfNeeded(); showGameover(); }
+  if (G?.ui?.pendingWheels && !window.__wheelsPromptOpen) {
+    window.__wheelsPromptOpen=true;
+    setTimeout(showWheelsChoice,100);
+  }
   // Mouth of Sauron tribute prompt
   if (G?.ui?.pendingMouthTribute) {
     G.ui.pendingMouthTribute = false;

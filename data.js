@@ -679,7 +679,7 @@ const EXTRA_SHADOW_ROUTE_SPECS = [
   { key:'dunland-yellow-extra', start:'dunland', lineColor:'yellow', lineId:'yellow', destination:'rivendell', back:'black' },
   { key:'dunland-orange-extra', start:'dunland', lineColor:'orange', lineId:'orange', destination:'helms-deep', back:'red' },
   { key:'minas-morgul-purple-extra', start:'minas-morgul', lineColor:'purple', lineId:'purple-c', destination:'helms-deep', back:'black' },
-  { key:'minas-morgul-yellow-extra', start:'minas-morgul', lineColor:'yellow', lineId:'yellow-c', destination:'minas-tirith', back:'red' },
+  { key:'udun-yellow-extra', start:'udun', lineColor:'yellow', lineId:'yellow-c', destination:'minas-tirith', back:'red' },
   { key:'barad-dur-teal-extra', start:'barad-dur', lineColor:'teal', lineId:'teal-b', destination:'erebor', back:'black' },
 ];
 const APPROX_SHADOW_ORDERS=['eye-to-frodo','move-2-nazgul','deploy-nazgul'];
@@ -690,8 +690,8 @@ const NORMAL_SHADOW_CARDS=[];
 SHADOW_ROUTE_SPECS.forEach((spec,i)=>{NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'r','red',i*2));NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'b','black',i*2+1));});
 EXTRA_SHADOW_ROUTE_SPECS.forEach((spec,i)=>NORMAL_SHADOW_CARDS.push(makeApproxShadowFront(spec,'x',spec.back,SHADOW_ROUTE_SPECS.length*2+i)));
 const SPECIAL_SHADOW_CARDS=[
-  {id:'special-drums-of-war',type:'special-shadow',name:'The Drums of War',back:'black',effect:'drums',text:'Add 1 shadow troop to Udûn, Barad-dûr, and Minas Morgul.'},
-  {id:'special-wheels-of-saruman',type:'special-shadow',name:'The Wheels of Saruman',back:'red',effect:'wheels',text:'Break Oath: remove 1 Dwarven troop from Iron Hills and 1 from Ered Luin.'},
+  {id:'special-drums-of-war',type:'special-shadow',name:'The Drums of War',back:'black',effect:'drums',text:'Add 1 Shadow troop to each Shadow stronghold in Mordor.'},
+  {id:'special-wheels-of-saruman',type:'special-shadow',name:'The Wheels of Saruman',back:'red',effect:'wheels',text:'Choose 1: remove any 2 friendly troops from the board; the current player discards a total of 2 cards and/or tokens; or lose 1 Hope.'},
 ];
 function makeShadowDeck(){return shuffle(NORMAL_SHADOW_CARDS.map(c=>({...c})));}
 
